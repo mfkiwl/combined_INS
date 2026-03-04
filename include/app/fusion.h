@@ -130,8 +130,8 @@ struct ConstraintConfig {
 };
 
 /**
- * FEJ-ESKF 配置。
- * 默认关闭，开启后仅替换弱可观相关雅可比块。
+ * InEKF 配置（复用原 FEJ 配置节）。
+ * `enable=true` 表示启用 Right-Invariant EKF 模式。
  */
 struct FejConfig {
   bool enable = false;

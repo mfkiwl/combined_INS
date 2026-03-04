@@ -85,25 +85,12 @@ bool EskfEngine::Predict() {
     Vector3d sf_g = Vector3d::Ones() - state_.sg;
     omega_ib_b_corr = sf_g.cwiseProduct(omega_ib_unbiased);
   }
-
-  // FEJ 传播雅可比中的比力近似：按参考 bias/scale 重新构造（仅用于雅可比）
-  Vector3d f_b_fej = res.f_b;
-  if (fej_ != nullptr && fej_->enabled && fej_->initialized && curr_imu_.dt > 1e-9) {
-    Vector3d ba_ref = state_.ba;
-    Vector3d sa_ref = state_.sa;
-    if (fej_->use_layer2) {
-      ba_ref = fej_->b_a_fej;
-      sa_ref = fej_->s_a_fej;
-    }
-    Vector3d sf_a_ref = Vector3d::Ones() - sa_ref;
-    Vector3d dvel_bc_ref = curr_imu_.dvel - ba_ref * curr_imu_.dt;
-    f_b_fej = sf_a_ref.cwiseProduct(dvel_bc_ref) / curr_imu_.dt;
-  }
+  bool use_inekf = (fej_ != nullptr && fej_->enabled);
 
   InsMech::BuildProcessModel(R_ne.transpose() * res.Cbn,  // C_b^n = R_e^n * C_b^e
                              res.f_b, omega_ib_b_corr, v_ned,
                              llh.lat, llh.h, curr_imu_.dt, noise_, Phi, Qd,
-                             fej_, f_b_fej);
+                             use_inekf);
   state_ = res.state;
   P_ = Phi * P_ * Phi.transpose() + Qd;
   P_ = 0.5 * (P_ + P_.transpose());
@@ -236,13 +223,17 @@ void EskfEngine::InjectErrorState(const VectorXd &dx) {
   state_.p += dr_ecef;
   state_.v += dv_ecef;
 
-  // 姿态修正：
-  // 误差状态 φ 在 NED 系定义，四元数 state_.q 表示 body->ECEF。
-  // 先将 φ 转到 ECEF 系，再进行左乘注入：
-  //   C_be,new ≈ (I - (δφ_e×)) C_be
+  // InEKF Right-Invariant 姿态注入：
+  // 误差状态 φ 在 NED 系定义，先转到 ECEF，再进行右乘注入。
   Vector3d dphi_ecef = R_ne * dphi_ned;
-  Vector4d dq = QuatFromSmallAngle(-dphi_ecef);
-  state_.q = NormalizeQuat(QuatMultiply(dq, state_.q));
+  bool use_inekf = (fej_ != nullptr && fej_->enabled);
+  if (use_inekf) {
+    Vector4d dq = QuatFromSmallAngle(dphi_ecef);
+    state_.q = NormalizeQuat(QuatMultiply(state_.q, dq));
+  } else {
+    Vector4d dq = QuatFromSmallAngle(-dphi_ecef);
+    state_.q = NormalizeQuat(QuatMultiply(dq, state_.q));
+  }
 
   // IMU误差反馈（零偏和比例因子误差定义为：b̂ = b + δb）
   state_.ba += dba;

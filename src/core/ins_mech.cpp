@@ -148,8 +148,7 @@ void InsMech::BuildProcessModel(const Matrix3d &C_bn,
                                 const NoiseParams &np,
                                 Matrix<double, kStateDim, kStateDim> &Phi,
                                 Matrix<double, kStateDim, kStateDim> &Qd,
-                                const FejManager *fej,
-                                const Vector3d &f_b_fej) {
+                                bool use_inekf) {
   // 检查输入参数有效性
   if (std::abs(lat) > 1.57079632679 + 0.1) {
     std::cerr << "[BuildProcessModel] WARNING: lat out of range: " << lat << "\n";
@@ -169,8 +168,9 @@ void InsMech::BuildProcessModel(const Matrix3d &C_bn,
   Vector3d omega_en_n = OmegaEnNedLocal(v_ned, lat, h, R_M, R_N);
   Vector3d omega_in_n = omega_ie_n + omega_en_n;
 
-  // 导航系下的比力
-  Vector3d f_n = C_bn * f_b;
+  // InEKF 参考量：仅使用当前帧修正后 IMU 量（body->NED 变换）
+  Vector3d omega_m_ned = C_bn * omega_ib_b;
+  Vector3d a_m_ned = C_bn * f_b;
 
   // 连续时间误差模型 F（NED系）
   Matrix<double, kStateDim, kStateDim> F = Matrix<double, kStateDim, kStateDim>::Zero();
@@ -199,8 +199,8 @@ void InsMech::BuildProcessModel(const Matrix3d &C_bn,
   // F_vv = -(2ω_ie^n + ω_en^n) ×
   F.block<3, 3>(3, 3) = -Skew(2.0 * omega_ie_n + omega_en_n);
 
-  // F_vφ = (f^n ×)
-  F.block<3, 3>(3, 6) = Skew(f_n);
+  // InEKF: F_vφ = (a_m^n ×)
+  F.block<3, 3>(3, 6) = Skew(a_m_ned);
 
   // F_vba = -C_b^n（标准ESKF约定）
   F.block<3, 3>(3, 9) = -C_bn;
@@ -229,8 +229,13 @@ void InsMech::BuildProcessModel(const Matrix3d &C_bn,
   F_phiv(2, 1) = -tan(lat) / (R_N + h);
   F.block<3, 3>(6, 3) = F_phiv;
 
-  // F_φφ = -(ω_in^n ×)
-  F.block<3, 3>(6, 6) = -Skew(omega_in_n);
+  if (use_inekf) {
+    // InEKF: F_φφ = -(ω_m^n ×)
+    F.block<3, 3>(6, 6) = -Skew(omega_m_ned);
+  } else {
+    // 标准 ESKF: F_φφ = -(ω_in^n ×)
+    F.block<3, 3>(6, 6) = -Skew(omega_in_n);
+  }
 
   // F_φbg = -C_b^n（标准ESKF约定）
   F.block<3, 3>(6, 12) = -C_bn;
@@ -250,13 +255,6 @@ void InsMech::BuildProcessModel(const Matrix3d &C_bn,
     F.block<3, 3>(18, 18) = neg_invT_I;   // sa
   }
   // odo_scale, mounting, lever_arm, gnss_lever_arm 保持随机常数
-
-  // FEJ：仅替换弱可观敏感块（其余块保持标准 ESKF）
-  if (fej != nullptr && fej->enabled && fej->initialized) {
-    Vector3d f_n_fej = fej->C_bn_fej * f_b_fej;
-    F.block<3, 3>(3, 6) = Skew(f_n_fej);       // F_vphi
-    F.block<3, 3>(6, 12) = -fej->C_bn_fej;     // F_phibg
-  }
 
   // 检查F矩阵是否有异常大的值
   double max_F = F.cwiseAbs().maxCoeff();

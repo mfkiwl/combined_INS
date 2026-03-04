@@ -36,8 +36,8 @@ struct State {
 };
 
 /**
- * FEJ 管理器：保存首次估计线性化点（冻结值）。
- * 仅影响雅可比计算，不改变名义状态传播与误差注入。
+ * InEKF 开关管理器（复用 FEJ 接口以避免上层改动）。
+ * 保留原有字段与方法签名以兼容调用方，冻结点语义已废弃。
  */
 struct FejManager {
   bool enabled = false;
@@ -65,36 +65,30 @@ struct FejManager {
   }
 
   void Initialize(const State &x_nom) {
-    if (!enabled || initialized) {
+    (void)x_nom;
+    if (!enabled) {
       return;
     }
-    C_be_fej = QuatToRot(x_nom.q);
-    Llh llh = EcefToLlh(x_nom.p);
-    Matrix3d R_ne = RotNedToEcef(llh);
-    C_bn_fej = R_ne.transpose() * C_be_fej;
-    l_gnss_fej = x_nom.gnss_lever_arm;
-    l_odo_fej = x_nom.lever_arm;
-    b_g_fej = x_nom.bg;
-    b_a_fej = x_nom.ba;
-    s_g_fej = x_nom.sg;
-    s_a_fej = x_nom.sa;
+    // InEKF 不需要冻结线性化点，此处仅保留初始化标记。
     initialized = true;
   }
 
   Matrix3d CbnRefAt(const State &x_nom) const {
-    (void)x_nom;
-    return C_bn_fej;
+    Llh llh = EcefToLlh(x_nom.p);
+    Matrix3d R_ne = RotNedToEcef(llh);
+    return R_ne.transpose() * QuatToRot(x_nom.q);
   }
 
   void UpdateLayer2Flag(double omega_rms, double accel_rms,
                         double omega_threshold, double accel_threshold,
                         bool layer2_enabled) {
-    if (!enabled || !initialized || !layer2_enabled) {
-      use_layer2 = false;
-      return;
-    }
-    use_layer2 = (omega_rms < omega_threshold &&
-                  accel_rms < accel_threshold);
+    (void)omega_rms;
+    (void)accel_rms;
+    (void)omega_threshold;
+    (void)accel_threshold;
+    (void)layer2_enabled;
+    // InEKF 不使用 layer2 FEJ 机制。
+    use_layer2 = false;
   }
 };
 
@@ -230,8 +224,7 @@ class InsMech {
                                 const NoiseParams &np,
                                 Matrix<double, kStateDim, kStateDim> &Phi,
                                 Matrix<double, kStateDim, kStateDim> &Qd,
-                                const FejManager *fej = nullptr,
-                                const Vector3d &f_b_fej = Vector3d::Zero());
+                                bool use_inekf);
 };
 
 /**

@@ -67,6 +67,7 @@ VelConstraintModel ComputeNhcModel(const State &state, const Matrix3d &C_b_v,
                                    const Vector3d &omega_ib_b_raw,
                                    double sigma_nhc_y, double sigma_nhc_z,
                                    const FejManager *fej) {
+  bool use_inekf = (fej != nullptr && fej->enabled);
   VelConstraintModel model;
 
   Llh llh = EcefToLlh(state.p);
@@ -96,10 +97,14 @@ VelConstraintModel ComputeNhcModel(const State &state, const Matrix3d &C_b_v,
   // H_v = C_b^v * C_n^b
   Matrix3d H_v = C_b_v * C_bn.transpose();
 
-  // H_theta = -C_b^v * Skew(v_b) * C_n^b
-  // 正确推导：δ(C_n^b * v^n) / δφ = -C_n^b * Skew(v^n) = -Skew(v^b) * C_n^b
-  // 故 H_theta_full = C_b^v * (-Skew(v^b)) * C_n^b = -C_b^v * Skew(v^b) * C_bn.transpose()
-  Matrix3d H_theta = -C_b_v * Skew(v_b) * C_bn.transpose();
+  Matrix3d H_theta = Matrix3d::Zero();
+  if (use_inekf) {
+    // InEKF (Right-Invariant): 姿态误差列相对加法误差模型取反
+    H_theta = C_b_v * Skew(v_b) * C_bn.transpose();
+  } else {
+    // 标准 ESKF
+    H_theta = -C_b_v * Skew(v_b) * C_bn.transpose();
+  }
 
   // H_bg = C_b^v * Skew(l) * diag(1-sg)
   Matrix3d H_bg = C_b_v * Skew(lever_arm) * sf_g.asDiagonal();
@@ -131,34 +136,18 @@ VelConstraintModel ComputeNhcModel(const State &state, const Matrix3d &C_b_v,
 
   // 补充：杆臂通过 omega_nb_b 对姿态误差的间接耦合
   // δ(C_n^b * omega_in^n) / δφ ≈ C_n^b * Skew(omega_in^n) 的贡献经杆臂传播
-  // H_theta_lever = -C_b^v * Skew(lever_arm) * C_bn.transpose() * Skew(omega_in_n)
+  // InEKF (Right-Invariant): 姿态误差列相对加法误差模型取反
   // 注：仅当 lever_arm.norm() > 0.05m 时该项才有显著影响
   if (lever_arm.norm() > 1e-3) {
-    Matrix3d H_theta_lever =
-        -C_b_v * Skew(lever_arm) * C_bn.transpose() * Skew(omega_in_n);
-    model.H.block<2, 3>(0, 6) += H_theta_lever.block<2, 3>(1, 0);
-  }
-
-  if (fej != nullptr && fej->enabled && fej->initialized) {
-    Matrix3d C_bn_fej = fej->CbnRefAt(state);
-    Vector3d v_b_fej = C_bn_fej.transpose() * v_ned;
-
-    Matrix3d H_v_fej = C_b_v * C_bn_fej.transpose();
-    Matrix3d H_theta_fej = -C_b_v * Skew(v_b_fej) * C_bn_fej.transpose();
-
-    model.H.block<2, 3>(0, 3) = H_v_fej.block<2, 3>(1, 0);
-    model.H.block<2, 3>(0, 6) = H_theta_fej.block<2, 3>(1, 0);
-
-    if (fej->use_layer2) {
-      Vector3d sf_g_fej = Vector3d::Ones() - fej->s_g_fej;
-      Vector3d omega_ib_unbiased_fej = omega_ib_b_raw - fej->b_g_fej;
-      Matrix3d H_bg_fej =
-          C_b_v * Skew(fej->l_odo_fej) * sf_g_fej.asDiagonal();
-      Matrix3d H_sg_fej =
-          C_b_v * Skew(fej->l_odo_fej) * omega_ib_unbiased_fej.asDiagonal();
-      model.H.block<2, 3>(0, 12) = H_bg_fej.block<2, 3>(1, 0);
-      model.H.block<2, 3>(0, 15) = H_sg_fej.block<2, 3>(1, 0);
+    Matrix3d H_theta_lever = Matrix3d::Zero();
+    if (use_inekf) {
+      H_theta_lever =
+          C_b_v * Skew(lever_arm) * C_bn.transpose() * Skew(omega_in_n);
+    } else {
+      H_theta_lever =
+          -C_b_v * Skew(lever_arm) * C_bn.transpose() * Skew(omega_in_n);
     }
+    model.H.block<2, 3>(0, 6) += H_theta_lever.block<2, 3>(1, 0);
   }
 
   model.R = Matrix2d::Zero();
@@ -176,6 +165,7 @@ VelConstraintModel ComputeOdoModel(const State &state, double odo_speed,
                                    const Vector3d &omega_ib_b_raw,
                                    double sigma_odo,
                                    const FejManager *fej) {
+  bool use_inekf = (fej != nullptr && fej->enabled);
   VelConstraintModel model;
 
   Llh llh = EcefToLlh(state.p);
@@ -210,9 +200,14 @@ VelConstraintModel ComputeOdoModel(const State &state, double odo_speed,
   RowVector3d H_v_phys = (C_b_v * C_bn.transpose()).row(0);
   model.H.block<1, 3>(0, 3) = s * H_v_phys;
 
-  // 2. H_theta = -C_b^v * Skew(v_b) * C_n^b（取第0行对应前向速度分量）
-  // 推导与 NHC 一致：δ(C_n^b v^n)/δφ = -Skew(v^b) * C_n^b
-  Matrix3d H_theta_full = -C_b_v * Skew(v_b) * C_bn.transpose();
+  Matrix3d H_theta_full = Matrix3d::Zero();
+  if (use_inekf) {
+    // InEKF (Right-Invariant): 姿态误差列相对加法误差模型取反
+    H_theta_full = C_b_v * Skew(v_b) * C_bn.transpose();
+  } else {
+    // 标准 ESKF
+    H_theta_full = -C_b_v * Skew(v_b) * C_bn.transpose();
+  }
   model.H.block<1, 3>(0, 6) = s * H_theta_full.row(0);
 
   // 3. H_bg = C_b^v * Skew(l) * diag(1-sg)
@@ -242,29 +237,6 @@ VelConstraintModel ComputeOdoModel(const State &state, double odo_speed,
   RowVector3d H_lever_phys = C_b_v.row(0) * Skew(omega_nb_b);
   model.H.block<1, 3>(0, 25) = s * H_lever_phys;
 
-  if (fej != nullptr && fej->enabled && fej->initialized) {
-    Matrix3d C_bn_fej = fej->CbnRefAt(state);
-    Vector3d v_b_fej = C_bn_fej.transpose() * v_ned;
-
-    RowVector3d H_v_phys_fej = (C_b_v * C_bn_fej.transpose()).row(0);
-    Matrix3d H_theta_full_fej = -C_b_v * Skew(v_b_fej) * C_bn_fej.transpose();
-
-    model.H.block<1, 3>(0, 3) = s * H_v_phys_fej;
-    model.H.block<1, 3>(0, 6) = s * H_theta_full_fej.row(0);
-
-    if (fej->use_layer2) {
-      Vector3d sf_g_fej = Vector3d::Ones() - fej->s_g_fej;
-      Vector3d omega_ib_unbiased_fej = omega_ib_b_raw - fej->b_g_fej;
-      RowVector3d H_bg_phys_fej =
-          C_b_v.row(0) * Skew(fej->l_odo_fej) * sf_g_fej.asDiagonal();
-      RowVector3d H_sg_phys_fej =
-          C_b_v.row(0) * Skew(fej->l_odo_fej) *
-          omega_ib_unbiased_fej.asDiagonal();
-      model.H.block<1, 3>(0, 12) = s * H_bg_phys_fej;
-      model.H.block<1, 3>(0, 15) = s * H_sg_phys_fej;
-    }
-  }
-
   model.R.resize(1, 1);
   model.R(0, 0) = sigma_odo * sigma_odo;
 
@@ -278,6 +250,7 @@ VelConstraintModel ComputeOdoModel(const State &state, double odo_speed,
 UwbModel ComputeGnssPositionModel(const State &state, const Vector3d &z_ecef,
                                   const Vector3d &sigma_gnss,
                                   const FejManager *fej) {
+  bool use_inekf = (fej != nullptr && fej->enabled);
   UwbModel model;
 
   Llh llh = EcefToLlh(state.p);
@@ -295,16 +268,15 @@ UwbModel ComputeGnssPositionModel(const State &state, const Vector3d &z_ecef,
 
   model.H.setZero(3, kStateDim);
   model.H.block<3, 3>(0, 0) = Matrix3d::Identity();
-  model.H.block<3, 3>(0, 6) = Skew(lever_ned);
+  if (use_inekf) {
+    // InEKF (Right-Invariant): 姿态误差列相对加法误差模型取反
+    model.H.block<3, 3>(0, 6) = -Skew(lever_ned);
+  } else {
+    // 标准 ESKF
+    model.H.block<3, 3>(0, 6) = Skew(lever_ned);
+  }
   // H_gnss_lever = C_b^n（标准雅可比，正号）
   model.H.block<3, 3>(0, 28) = C_bn;
-
-  if (fej != nullptr && fej->enabled && fej->initialized) {
-    Matrix3d C_bn_fej = fej->CbnRefAt(state);
-    Vector3d lever_ned_fej = C_bn_fej * fej->l_gnss_fej;
-    model.H.block<3, 3>(0, 6) = Skew(lever_ned_fej);
-    model.H.block<3, 3>(0, 28) = C_bn_fej;
-  }
 
   model.R = (sigma_gnss.cwiseProduct(sigma_gnss)).asDiagonal();
 
@@ -319,6 +291,7 @@ UwbModel ComputeGnssVelocityModel(const State &state, const Vector3d &z_gnss_vel
                                   const Vector3d &omega_ib_b_raw,
                                   const Vector3d &sigma_gnss_vel,
                                   const FejManager *fej) {
+  bool use_inekf = (fej != nullptr && fej->enabled);
   UwbModel model;
 
   Llh llh = EcefToLlh(state.p);
@@ -351,11 +324,12 @@ UwbModel ComputeGnssVelocityModel(const State &state, const Vector3d &z_gnss_vel
   // H_v = I_3
   model.H.block<3, 3>(0, 3) = Matrix3d::Identity();
 
-  // H_φ（Group A，不变）
+  // H_φ：InEKF 与标准 ESKF 仅符号相反
   Matrix3d H_phi_1 = -Skew(omega_in_n) * Skew(lever_ned);
   Vector3d Cb_l_cross_omega = C_bn * Skew(state.gnss_lever_arm) * omega_ib_corr;
   Matrix3d H_phi_2 = -Skew(Cb_l_cross_omega);
-  model.H.block<3, 3>(0, 6) = H_phi_1 + H_phi_2;
+  Matrix3d H_phi = H_phi_1 + H_phi_2;
+  model.H.block<3, 3>(0, 6) = use_inekf ? -H_phi : H_phi;
 
   // H_bg = C_b^n * Skew(l_gnss) * diag(1-sg)
   model.H.block<3, 3>(0, 12) =
@@ -367,34 +341,6 @@ UwbModel ComputeGnssVelocityModel(const State &state, const Vector3d &z_gnss_vel
 
   // H_gnss_lever = C_b^n * Skew(ω_nb^b)（标准雅可比，使用ω_nb^b）
   model.H.block<3, 3>(0, 28) = C_bn * Skew(omega_nb_b);
-
-  if (fej != nullptr && fej->enabled && fej->initialized) {
-    Matrix3d C_bn_fej = fej->CbnRefAt(state);
-    Vector3d lever_ned_fej = C_bn_fej * fej->l_gnss_fej;
-    Vector3d omega_ib_unbiased_fej = omega_ib_unbiased;
-    Vector3d sf_g_fej = sf_g;
-    if (fej->use_layer2) {
-      omega_ib_unbiased_fej = omega_ib_b_raw - fej->b_g_fej;
-      sf_g_fej = Vector3d::Ones() - fej->s_g_fej;
-    }
-    Vector3d omega_ib_corr_fej = sf_g_fej.cwiseProduct(omega_ib_unbiased_fej);
-    Vector3d omega_nb_b_fej = omega_ib_corr_fej - C_bn_fej.transpose() * omega_in_n;
-
-    Matrix3d H_phi_1_fej = -Skew(omega_in_n) * Skew(lever_ned_fej);
-    Vector3d Cb_l_cross_omega_fej =
-        C_bn_fej * Skew(fej->l_gnss_fej) * omega_ib_corr_fej;
-    Matrix3d H_phi_2_fej = -Skew(Cb_l_cross_omega_fej);
-    model.H.block<3, 3>(0, 6) = H_phi_1_fej + H_phi_2_fej;
-
-    model.H.block<3, 3>(0, 28) = C_bn_fej * Skew(omega_nb_b_fej);
-
-    if (fej->use_layer2) {
-      model.H.block<3, 3>(0, 12) =
-          C_bn_fej * Skew(fej->l_gnss_fej) * sf_g_fej.asDiagonal();
-      model.H.block<3, 3>(0, 15) =
-          C_bn_fej * Skew(fej->l_gnss_fej) * omega_ib_unbiased_fej.asDiagonal();
-    }
-  }
 
   model.R = sigma_gnss_vel.cwiseProduct(sigma_gnss_vel).asDiagonal();
 

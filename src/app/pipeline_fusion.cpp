@@ -710,7 +710,7 @@ void RunGnssUpdate(EskfEngine &engine, const Dataset &dataset,
 
     if (fej != nullptr && fej->enabled && !fej->initialized) {
       fej->Initialize(engine.state());
-      cout << "[FEJ] Initialized at t=" << fixed << setprecision(3)
+      cout << "[InEKF] Initialized at t=" << fixed << setprecision(3)
            << t_gnss << "\n";
     }
 
@@ -1081,7 +1081,7 @@ FusionResult RunFusion(const FusionOptions &options, const Dataset &dataset,
   FejManager fej;
   fej.Enable(options.fej.enable);
   engine.SetFejManager(fej.enabled ? &fej : nullptr);
-  cout << "[Init] FEJ-ESKF: " << (fej.enabled ? "ON" : "OFF") << "\n";
+  cout << "[Init] InEKF: " << (fej.enabled ? "ON" : "OFF") << "\n";
   cout << "[Init] Ablation: "
        << "gnss_lever=" << (active_ablation.disable_gnss_lever_arm ? "OFF" : "ON")
        << " odo_lever=" << (active_ablation.disable_odo_lever_arm ? "OFF" : "ON")

@@ -1,4 +1,4 @@
-common:
+﻿common:
   anchors:
     mode: fixed
     margin: 1.0
@@ -13,13 +13,13 @@ fusion:
   pos_path: dataset/data2_converted/POS_converted.txt
   gnss_path: dataset/data2_converted/GNSS_converted.txt
   uwb_path: ''
-  output_path: SOL_data2_gnss_nonadaptive_allon_strict_inekf.txt
+  output_path: SOL_data2_baseline_eskf.txt
   starttime: 528076.0
   finaltime: 530488.9
   uwb_anchor_schedule:
     enabled: false
   fej:
-    enable: true
+    enable: false
     enable_layer2: true
     imu_window_size: 100
     omega_threshold: 0.05
@@ -191,3 +191,4 @@ generator:
   uwb_hz: 10.0
   sigma: 0.1
   seed: 42
+

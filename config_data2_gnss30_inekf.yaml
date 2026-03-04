@@ -1,4 +1,4 @@
-common:
+﻿common:
   anchors:
     mode: fixed
     margin: 1.0
@@ -13,13 +13,16 @@ fusion:
   pos_path: dataset/data2_converted/POS_converted.txt
   gnss_path: dataset/data2_converted/GNSS_converted.txt
   uwb_path: ''
-  output_path: SOL_data2_gnss_clean.txt
+  output_path: SOL_data2_gnss30_inekf.txt
   starttime: 528076.0
   finaltime: 530488.9
   uwb_anchor_schedule:
     enabled: false
+  gnss_schedule:
+    enabled: true
+    head_ratio: 0.3
   fej:
-    enable: false
+    enable: true
     enable_layer2: true
     imu_window_size: 100
     omega_threshold: 0.05
@@ -33,14 +36,17 @@ fusion:
     sigma_sa: 0.0005
     sigma_odo_scale: 1.0e-05
     sigma_mounting: 0.0001
+    sigma_mounting_roll: 0.0001
+    sigma_mounting_pitch: 0.0001
+    sigma_mounting_yaw: 0.0001
     sigma_lever_arm: 0.001
     sigma_gnss_lever_arm: 0.001
     sigma_gnss_pos: 1
     sigma_uwb: 100.0
     markov_corr_time: 3600
   constraints:
-    enable_nhc: false
-    enable_odo: false
+    enable_nhc: true
+    enable_odo: true
     enable_zupt: false
     sigma_odo: 0.1
     odo_lever_arm:
@@ -60,6 +66,16 @@ fusion:
     zupt_max_acc: 0.5
     enable_diagnostics: false
     nhc_max_abs_v: 5.0
+    enable_consistency_log: false
+    enable_covariance_floor: false
+    freeze_extrinsics_when_weak_excitation: false
+    odo_min_update_interval: 0.0
+    nhc_min_update_interval: 0.0
+    p_floor_pos_var: 0.01
+    p_floor_vel_var: 0.001
+    p_floor_att_deg: 0.01
+    p_floor_mounting_deg: 0.1
+    p_floor_bg_var: 1.0e-08
   init:
     use_truth_pva: true
     init_pos_lla:
@@ -172,16 +188,10 @@ fusion:
     - 0.01
     - 0.01
     - 1.0e-06
-  ablation:
-    disable_gnss_lever_arm: false
-    disable_odo_lever_arm: true
-    disable_odo_scale: true
-    disable_gyro_scale: false
-    disable_accel_scale: false
-    disable_mounting: true
 generator:
   pos_path: dataset/data2_converted/POS_converted.txt
   output_path: UWB_simulated.txt
   uwb_hz: 10.0
   sigma: 0.1
   seed: 42
+

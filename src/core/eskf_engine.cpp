@@ -224,12 +224,12 @@ void EskfEngine::InjectErrorState(const VectorXd &dx) {
   state_.v += dv_ecef;
 
   // InEKF Right-Invariant 姿态注入：
-  // 误差状态 φ 在 NED 系定义，先转到 ECEF，再进行右乘注入。
+  // 误差状态 φ 在 NED 系定义，先转到 ECEF，再进行左乘注入。
   Vector3d dphi_ecef = R_ne * dphi_ned;
   bool use_inekf = (fej_ != nullptr && fej_->enabled);
   if (use_inekf) {
     Vector4d dq = QuatFromSmallAngle(dphi_ecef);
-    state_.q = NormalizeQuat(QuatMultiply(state_.q, dq));
+    state_.q = NormalizeQuat(QuatMultiply(dq, state_.q));
   } else {
     Vector4d dq = QuatFromSmallAngle(-dphi_ecef);
     state_.q = NormalizeQuat(QuatMultiply(dq, state_.q));

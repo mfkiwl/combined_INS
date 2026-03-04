@@ -1,4 +1,4 @@
-# 配置文件: data2 数据集基线
+﻿# 配置文件: data2 数据集基线
 # INS + GNSS + ODO + NHC 组合导航 (31维状态, P/V/A 用真值初始化)
 
 common:
@@ -19,7 +19,7 @@ fusion:
   pos_path: "dataset/data2_converted/POS_converted.txt"
   gnss_path: "dataset/data2_converted/GNSS_converted.txt"
   uwb_path: ""          # data2不使用UWB
-  output_path: "SOL_data2_gnss_baseline.txt"
+  output_path: SOL_data2_gnss30_eskf_nofreeze.txt
 
   # 时间裁剪范围 (data2重叠时间段)
   starttime: 528076.0
@@ -28,12 +28,20 @@ fusion:
   uwb_anchor_schedule:
     enabled: false
 
+  gnss_schedule:
+    enabled: true
+    head_ratio: 0.30
+
   fej:
     enable: false
     enable_layer2: true
     imu_window_size: 100
     omega_threshold: 0.05
     accel_threshold: 0.5
+
+  post_gnss_ablation:
+    enabled: false
+    disable_gnss_lever_arm: false
 
   noise:
     # IMU噪声参数
@@ -87,6 +95,8 @@ fusion:
 
     enable_diagnostics: false
     nhc_max_abs_v: 5.0
+
+    enable_consistency_log: false
     # 固定频率、全状态、全时段更新（非自适应）
     enable_covariance_floor: false
     freeze_extrinsics_when_weak_excitation: false
@@ -144,3 +154,6 @@ generator:
   uwb_hz: 10.0
   sigma: 0.1
   seed: 42
+
+
+

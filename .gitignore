@@ -44,6 +44,8 @@
 
 # 文档
 !README.md
+!AGENT.md
+!walkthrough.md
 !docs/
 !docs/**/
 !docs/**/*.md

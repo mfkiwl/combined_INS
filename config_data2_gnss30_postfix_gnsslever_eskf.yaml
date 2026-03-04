@@ -17,9 +17,9 @@ fusion:
   imu_path: "dataset/data2_converted/IMU_converted.txt"
   odo_path: "dataset/data2_converted/ODO_converted.txt"
   pos_path: "dataset/data2_converted/POS_converted.txt"
-  gnss_path: ""
+  gnss_path: "dataset/data2_converted/GNSS_converted.txt"
   uwb_path: ""          # data2不使用UWB
-  output_path: "SOL_data2_ins_odo_nhc.txt"
+  output_path: SOL_data2_gnss30_postfix_gnsslever_eskf.txt
 
   # 时间裁剪范围 (data2重叠时间段)
   starttime: 528076.0
@@ -28,12 +28,20 @@ fusion:
   uwb_anchor_schedule:
     enabled: false
 
+  gnss_schedule:
+    enabled: true
+    head_ratio: 0.30
+
   fej:
     enable: false
     enable_layer2: true
     imu_window_size: 100
     omega_threshold: 0.05
     accel_threshold: 0.5
+
+  post_gnss_ablation:
+    enabled: true
+    disable_gnss_lever_arm: true
 
   noise:
     # IMU噪声参数
@@ -89,8 +97,11 @@ fusion:
     nhc_max_abs_v: 5.0
 
     enable_consistency_log: false
-    # 运动状态分级自适应滤波（替代原单一全状态更新节奏）
-    enable_covariance_floor: true
+    # 固定频率、全状态、全时段更新（非自适应）
+    enable_covariance_floor: false
+    freeze_extrinsics_when_weak_excitation: false
+    odo_min_update_interval: 0.0
+    nhc_min_update_interval: 0.0
     p_floor_pos_var: 0.01
     p_floor_vel_var: 0.001
     p_floor_att_deg: 0.01
@@ -139,9 +150,10 @@ fusion:
 
 generator:
   pos_path: "dataset/data2_converted/POS_converted.txt"
-  output_path: "SOL_data2_ins_odo_nhc.txt"
+  output_path: "UWB_simulated.txt"
   uwb_hz: 10.0
   sigma: 0.1
   seed: 42
+
 
 

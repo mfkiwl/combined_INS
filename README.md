@@ -103,7 +103,7 @@ cmake --build build --config Release
 ### 4) 结果绘图
 
 ```bash
-python plot_navresult.py SOL_data2_gnss_baseline.txt
+python plot_navresult.py SOL_data2_baseline_eskf.txt
 ```
 
 - 支持读取 28/31 列新格式 SOL 文件

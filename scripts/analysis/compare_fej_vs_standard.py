@@ -66,8 +66,21 @@ def load_truth(path):
         df = pd.read_csv(path, sep=r"\s+", header=None)
         if df.shape[1] < 4:
             raise ValueError(f"truth file needs at least 4 columns: {path}")
-        df = df.iloc[:, :4]
-        df.columns = ["timestamp", "tx", "ty", "tz"]
+        t = df.iloc[:, 0].to_numpy()
+        c1 = df.iloc[:, 1].to_numpy()
+        c2 = df.iloc[:, 2].to_numpy()
+        c3 = df.iloc[:, 3].to_numpy()
+        # 无表头时自动识别 LLA/ECEF：若前两列绝对值较小，则按经纬高处理。
+        if np.max(np.abs(np.column_stack([c1, c2]))) < 200.0:
+            tx, ty, tz = llh_to_ecef(c1, c2, c3)
+        else:
+            tx, ty, tz = c1, c2, c3
+        df = pd.DataFrame({
+            "timestamp": t,
+            "tx": tx,
+            "ty": ty,
+            "tz": tz,
+        })
     return df[["timestamp", "tx", "ty", "tz"]]
 
 

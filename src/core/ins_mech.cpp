@@ -168,8 +168,7 @@ void InsMech::BuildProcessModel(const Matrix3d &C_bn,
   Vector3d omega_en_n = OmegaEnNedLocal(v_ned, lat, h, R_M, R_N);
   Vector3d omega_in_n = omega_ie_n + omega_en_n;
 
-  // InEKF 参考量：仅使用当前帧修正后 IMU 量（body->NED 变换）
-  Vector3d omega_m_ned = C_bn * omega_ib_b;
+  // 当前帧修正后 IMU 参考量（body->NED 变换）
   Vector3d a_m_ned = C_bn * f_b;
 
   // 连续时间误差模型 F（NED系）
@@ -199,8 +198,13 @@ void InsMech::BuildProcessModel(const Matrix3d &C_bn,
   // F_vv = -(2ω_ie^n + ω_en^n) ×
   F.block<3, 3>(3, 3) = -Skew(2.0 * omega_ie_n + omega_en_n);
 
-  // InEKF: F_vφ = (a_m^n ×)
-  F.block<3, 3>(3, 6) = Skew(a_m_ned);
+  if (use_inekf) {
+    // RI-EKF: F_vφ = -(a_m^n ×)
+    F.block<3, 3>(3, 6) = -Skew(a_m_ned);
+  } else {
+    // 标准 ESKF: F_vφ = (a_m^n ×)
+    F.block<3, 3>(3, 6) = Skew(a_m_ned);
+  }
 
   // F_vba = -C_b^n（标准ESKF约定）
   F.block<3, 3>(3, 9) = -C_bn;
@@ -229,13 +233,8 @@ void InsMech::BuildProcessModel(const Matrix3d &C_bn,
   F_phiv(2, 1) = -tan(lat) / (R_N + h);
   F.block<3, 3>(6, 3) = F_phiv;
 
-  if (use_inekf) {
-    // InEKF: F_φφ = -(ω_m^n ×)
-    F.block<3, 3>(6, 6) = -Skew(omega_m_ned);
-  } else {
-    // 标准 ESKF: F_φφ = -(ω_in^n ×)
-    F.block<3, 3>(6, 6) = -Skew(omega_in_n);
-  }
+  // RI-EKF 与标准 ESKF 在该项一致：F_φφ = -(ω_in^n ×)
+  F.block<3, 3>(6, 6) = -Skew(omega_in_n);
 
   // F_φbg = -C_b^n（标准ESKF约定）
   F.block<3, 3>(6, 12) = -C_bn;

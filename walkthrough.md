@@ -918,6 +918,33 @@ next_step:
   - 做符号与结构 A/B：`-Skew(v_ned)C_bn` / `+Skew(v_ned)C_bn` / 不启用，比较 baseline 与 GNSS30 双场景。
   - 检查 RI 下 `ξ_p` 相关过程噪声映射是否遗漏，并与量测噪声约定联合验证。
 
+### session_id: 20260304-2336-push-inekf-gvelgyro-fix
+
+- timestamp: 2026-03-04 23:36 (local)
+- objective: 将 `G(kVel,gyro)` RI 耦合修复版本推送到 GitHub `origin/main`。
+- scope:
+  - 检查当前工作区与分支状态。
+  - 提交 `ins_mech.cpp + walkthrough.md` 并推送远端。
+- changed_files:
+  - `walkthrough.md`
+- configs:
+  - N/A（本次为代码同步任务）
+- commands:
+  - `git add src/core/ins_mech.cpp walkthrough.md`
+  - `git commit -m "fix: add ri velocity-gyro noise coupling"`
+  - `git push origin main`
+- artifacts:
+  - Git commit: `cff7537`（`fix: add ri velocity-gyro noise coupling`）
+  - 远端更新: `origin/main` 从 `67caa4f` 前进到 `cff7537`
+- metrics:
+  - N/A（本次任务未新增实验运行）
+- observability_notes:
+  - 本次未新增实验；状态块 `21-30` 与调度窗口行为引用上一个会话（`20260304-2318-fix-inekf-gvel-gyro-noise-map`）结论。
+- decision:
+  - 已完成当前修复版本的远端同步，可继续开展 `ISSUE-005/006` A/B 调试。
+- next_step:
+  - 基于远端 `cff7537` 继续执行 `G(kVel,gyro)` 符号/开关 A/B 与 RI 量测耦合联合验证。
+
 ## 下一步（优先队列）
 
 1. 处理 `ISSUE-005/006`：对 `G(kVel,gyro)` 做符号与开关 A/B（`-Skew(v)C_bn`、`+Skew(v)C_bn`、disabled），在 baseline+GNSS30 双场景找出一致改进方向。

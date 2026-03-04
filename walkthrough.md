@@ -726,13 +726,14 @@ next_step:
   - `git commit -m "chore: sync inekf rewrite updates and docs"`
   - `git push origin main`
 - artifacts:
-  - Git commit（包含上述变更，提交哈希见 `git log -1 --oneline`）
+  - Git commit: `69919da`（`chore: sync inekf rewrite updates and docs`）
+  - 远端更新: `origin/main` 从 `bc0f1b4` 前进到 `69919da`
 - metrics:
   - N/A（本次任务为代码同步，不新增实验指标）
 - observability_notes:
   - 本次未执行新实验；状态块 `21-30`、`fusion.ablation.*`、`fusion.post_gnss_ablation.*` 与调度窗口均未新增操作。
 - decision:
-  - 维持当前实验优先级，先完成版本同步，再继续 `ISSUE-001` 与 GNSS30 可观性矩阵任务。
+  - 已完成本地到远端的版本同步；研究任务优先级保持不变，继续 `ISSUE-001` 与 GNSS30 可观性矩阵。
 - next_step:
   - 推送完成后，按优先队列继续无 FEJ InEKF 退化定位与 compare 冲突清理。
 

@@ -822,6 +822,36 @@ next_step:
   - 重跑 `ISSUE-001` compare 汇总，更新 `output/compare_data2_baseline_eskf_vs_inekf_ctrl/`。
   - 在 `head_ratio=0.30` 下继续执行 post-GNSS 组合冻结矩阵，验证 RI 实现下状态块 `21-30` 的可观性趋势。
 
+### session_id: 20260304-2303-push-inekf-ri-github
+
+- timestamp: 2026-03-04 23:03 (local)
+- objective: 将 `代码大修3` 的 InEKF RI 实现改动上传到 GitHub `origin/main`。
+- scope:
+  - 读取 `walkthrough.md` 并复用当前阶段上下文。
+  - 检查分支与远端状态，提交工作区改动并推送远端。
+- changed_files:
+  - `walkthrough.md`
+- configs:
+  - N/A（本次为代码同步任务）
+- commands:
+  - `git status --short`
+  - `git branch --show-current`
+  - `git remote -v`
+  - `git add include/core/eskf.h src/core/eskf_engine.cpp src/core/ins_mech.cpp src/core/measurement_models_uwb.cpp src/app/pipeline_fusion.cpp walkthrough.md`
+  - `git commit -m "feat: implement right-invariant inekf per overhaul3"`
+  - `git push origin main`
+- artifacts:
+  - Git commit: `9592676`（`feat: implement right-invariant inekf per overhaul3`）
+  - 远端更新: `origin/main` 从 `873b39f` 前进到 `9592676`
+- metrics:
+  - N/A（本次任务未新增实验运行）
+- observability_notes:
+  - 本次未新增量测/调度/消融实验；状态块 `21-30`、`fusion.ablation.*`、`fusion.post_gnss_ablation.*` 与调度窗口未发生新实验层变更。
+- decision:
+  - `代码大修3` 的实现已完成版本化并同步到 GitHub。
+- next_step:
+  - 按优先队列继续 `ISSUE-005` baseline InEKF 回归定位与 `ISSUE-001` compare 冲突清理。
+
 ## 下一步（优先队列）
 
 1. 处理 `ISSUE-005`：在 `EXP-20260304-inekf-ri-realization-codeoverhaul3` 基础上定位 baseline InEKF 回归（优先 A/B 切换 `p_ned_local` 耦合项与 RI 注入逆变换项）。

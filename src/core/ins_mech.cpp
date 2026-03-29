@@ -272,14 +272,15 @@ void InsMech::BuildProcessModel(const Matrix3d &C_bn,
     F.block<3, 3>(StateIdx::kVel, StateIdx::kAtt) = Skew(a_m_ned);
   }
 
-  // f_corr = diag((1+sa)^-1) * f_unbiased，因此对 ba/sa 的导数应分别带上
-  // diag((1+sa)^-1) 与 f_unbiased .* (1+sa)^-2。
+  // 标准误差模型(Groves eq.14.42): δv̇ = ... + C_b^n · δf^b + ...
+  // δf^b = δba + diag(f) · δsa（残余传感器误差，正号）
+  // 含比例因子修正: δf/δba = diag((1+sa)^-1), δf/δsa = diag(f_unbiased .* (1+sa)^-2)
   const Matrix3d sf_a_diag = sf_a.asDiagonal().toDenseMatrix();
-  F.block<3, 3>(StateIdx::kVel, StateIdx::kBa) = -C_bn * sf_a_diag;
+  F.block<3, 3>(StateIdx::kVel, StateIdx::kBa) = C_bn * sf_a_diag;
 
   Matrix3d diag_fb_unbiased =
       (f_b_unbiased.cwiseProduct(sf_a.cwiseProduct(sf_a))).asDiagonal();
-  F.block<3, 3>(StateIdx::kVel, StateIdx::kSa) = -C_bn * diag_fb_unbiased;
+  F.block<3, 3>(StateIdx::kVel, StateIdx::kSa) = C_bn * diag_fb_unbiased;
 
   // === 姿态误差 φ̇ ===
   // F_φr = ∂ω_in^n/∂r

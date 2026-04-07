@@ -17,6 +17,7 @@
 #include "core/eskf.h"
 #include "core/uwb.h"
 #include "io/data_io.h"
+#include "navigation/measurement_model.h"
 #include "utils/math_utils.h"
 
 using namespace std;
@@ -462,17 +463,13 @@ bool ComputeOdoMeasurementAtTime(const Dataset &dataset,
   return true;
 }
 
-bool UseTrueInEkf(const FejManager *fej) {
-  return fej != nullptr && fej->UseTrueInEkfMode();
-}
-
-bool UseHybridInEkf(const FejManager *fej) {
-  return fej != nullptr && fej->enabled && !fej->true_iekf_mode;
+bool UseInEkf(const InEkfManager *inekf) {
+  return inekf != nullptr && inekf->enabled;
 }
 
 State ApplyErrorState(const State &nominal,
                       const VectorXd &dx,
-                      const FejManager *fej) {
+                      const InEkfManager *inekf) {
   State out = nominal;
   Vector3d dr_ned = dx.segment<3>(StateIdx::kPos);
   Vector3d dv_ned = dx.segment<3>(StateIdx::kVel);
@@ -481,10 +478,9 @@ State ApplyErrorState(const State &nominal,
   Llh llh = EcefToLlh(nominal.p);
   Matrix3d R_ne = RotNedToEcef(llh);
   Matrix3d C_bn = R_ne.transpose() * QuatToRot(nominal.q);
-  bool use_true_iekf = UseTrueInEkf(fej);
-  bool use_hybrid_inekf = UseHybridInEkf(fej);
+  bool use_inekf = UseInEkf(inekf);
 
-  if (use_true_iekf) {
+  if (use_inekf) {
     Vector3d rho_p_body = dr_ned;
     Vector3d rho_v_body = dv_ned;
     Vector3d phi_body = dphi_ned;
@@ -495,24 +491,11 @@ State ApplyErrorState(const State &nominal,
     Vector4d dq = QuatFromSmallAngle(phi_body);
     out.q = NormalizeQuat(QuatMultiply(out.q, dq));
   } else {
-    if (use_hybrid_inekf) {
-      Vector3d v_ned_nom = R_ne.transpose() * nominal.v;
-      dv_ned -= Skew(v_ned_nom) * dphi_ned;
-      if (fej->ri_inject_pos_inverse) {
-        Vector3d p_ned_local = R_ne.transpose() * (nominal.p - fej->p_init_ecef);
-        dr_ned -= Skew(p_ned_local) * dphi_ned;
-      }
-    }
     out.p += R_ne * dr_ned;
     out.v += R_ne * dv_ned;
     Vector3d dphi_ecef = R_ne * dphi_ned;
-    if (use_hybrid_inekf) {
-      Vector4d dq = QuatFromSmallAngle(dphi_ecef);
-      out.q = NormalizeQuat(QuatMultiply(dq, out.q));
-    } else {
-      Vector4d dq = QuatFromSmallAngle(-dphi_ecef);
-      out.q = NormalizeQuat(QuatMultiply(dq, out.q));
-    }
+    Vector4d dq = QuatFromSmallAngle(-dphi_ecef);
+    out.q = NormalizeQuat(QuatMultiply(dq, out.q));
   }
 
   out.ba += dx.segment<3>(StateIdx::kBa);
@@ -548,7 +531,7 @@ VectorXd BuildFiniteDifferenceSteps() {
 
 template <typename ModelBuilder>
 MatrixXd ComputeNumericalJacobian(const State &nominal,
-                                  const FejManager *fej,
+                                  const InEkfManager *inekf,
                                   const VectorXd &eps,
                                   const VectorXd &nominal_y,
                                   ModelBuilder &&builder) {
@@ -556,8 +539,8 @@ MatrixXd ComputeNumericalJacobian(const State &nominal,
   for (int j = 0; j < kStateDim; ++j) {
     VectorXd dx = VectorXd::Zero(kStateDim);
     dx(j) = eps(j);
-    State plus = ApplyErrorState(nominal, dx, fej);
-    State minus = ApplyErrorState(nominal, -dx, fej);
+    State plus = ApplyErrorState(nominal, dx, inekf);
+    State minus = ApplyErrorState(nominal, -dx, inekf);
     VectorXd y_plus = builder(plus);
     VectorXd y_minus = builder(minus);
     H_num.col(j) = -(y_plus - y_minus) / (2.0 * eps(j));
@@ -617,23 +600,23 @@ ParsedArgs ParseArgs(int argc, char **argv) {
   return args;
 }
 
-FejManager BuildFejManager(const FusionOptions &options,
-                           const State &reference_state) {
-  FejManager fej;
-  fej.Enable(options.fej.enable);
-  fej.true_iekf_mode = options.fej.true_iekf_mode;
-  fej.apply_covariance_floor_after_reset =
-      options.fej.apply_covariance_floor_after_reset;
-  fej.ri_gnss_pos_use_p_ned_local = options.fej.ri_gnss_pos_use_p_ned_local;
-  fej.ri_vel_gyro_noise_mode = options.fej.ri_vel_gyro_noise_mode;
-  fej.ri_inject_pos_inverse = options.fej.ri_inject_pos_inverse;
-  fej.debug_force_process_model = options.fej.debug_force_process_model;
-  fej.debug_force_vel_jacobian = options.fej.debug_force_vel_jacobian;
-  fej.debug_disable_true_reset_gamma = options.fej.debug_disable_true_reset_gamma;
-  fej.debug_enable_standard_reset_gamma =
-      options.fej.debug_enable_standard_reset_gamma;
-  fej.p_init_ecef = reference_state.p;
-  return fej;
+InEkfManager BuildInEkfManager(const FusionOptions &options,
+                               const State &reference_state) {
+  InEkfManager inekf;
+  inekf.Enable(options.inekf.enable);
+  inekf.apply_covariance_floor_after_reset =
+      options.inekf.apply_covariance_floor_after_reset;
+  inekf.ri_gnss_pos_use_p_ned_local = options.inekf.ri_gnss_pos_use_p_ned_local;
+  inekf.ri_vel_gyro_noise_mode = options.inekf.ri_vel_gyro_noise_mode;
+  inekf.ri_inject_pos_inverse = options.inekf.ri_inject_pos_inverse;
+  inekf.debug_force_process_model = options.inekf.debug_force_process_model;
+  inekf.debug_force_vel_jacobian = options.inekf.debug_force_vel_jacobian;
+  inekf.debug_disable_true_reset_gamma =
+      options.inekf.debug_disable_true_reset_gamma;
+  inekf.debug_enable_standard_reset_gamma =
+      options.inekf.debug_enable_standard_reset_gamma;
+  inekf.p_init_ecef = reference_state.p;
+  return inekf;
 }
 
 SampleSummaryRow BuildSampleSummary(const CaseMetaRow &meta,
@@ -726,7 +709,7 @@ OdoComponentRow BuildOdoComponentRow(const CaseMetaRow &meta,
                                      const State &state,
                                      const Matrix3d &C_b_v,
                                      const Vector3d &omega_ib_b_raw,
-                                     const FejManager *fej) {
+                                     const InEkfManager *inekf) {
   OdoComponentRow row;
   row.case_id = meta.case_id;
   row.config_path = meta.config_path;
@@ -757,29 +740,25 @@ OdoComponentRow BuildOdoComponentRow(const CaseMetaRow &meta,
   Vector3d v_wheel_b = v_b + omega_nb_b.cross(state.lever_arm);
   Vector3d v_phys_v = C_b_v * v_wheel_b;
 
-  bool use_true_iekf = UseTrueInEkf(fej);
-  bool use_hybrid_inekf = UseHybridInEkf(fej);
-  bool hybrid_zero = use_hybrid_inekf;
+  bool use_inekf = UseInEkf(inekf);
 
   RowVector3d H_v_phys = RowVector3d::Zero();
-  if (use_true_iekf) {
+  if (use_inekf) {
     H_v_phys = C_b_v.row(0);
   } else {
     H_v_phys = (C_b_v * C_bn.transpose()).row(0);
   }
 
   Matrix3d H_theta_base = Matrix3d::Zero();
-  if (use_true_iekf) {
+  if (use_inekf) {
     H_theta_base = C_b_v * Skew(v_b);
-  } else if (hybrid_zero) {
-    H_theta_base.setZero();
   } else {
     H_theta_base = -C_b_v * Skew(v_b) * C_bn.transpose();
   }
 
   Matrix3d H_theta_lever = Matrix3d::Zero();
-  if (!hybrid_zero && state.lever_arm.norm() > 1e-3) {
-    if (use_true_iekf) {
+  if (state.lever_arm.norm() > 1e-3) {
+    if (use_inekf) {
       H_theta_lever = C_b_v * Skew(state.lever_arm) * Skew(omega_in_b);
     } else {
       H_theta_lever =
@@ -859,10 +838,7 @@ OdoComponentRow BuildOdoComponentRow(const CaseMetaRow &meta,
 }
 
 void WriteCaseMetaCsv(const fs::path &path, const vector<CaseMetaRow> &rows) {
-  ofstream fout(path);
-  if (!fout) {
-    throw runtime_error("failed to open CSV for write: " + path.string());
-  }
+  ofstream fout = io::OpenOutputFile(path.string());
   fout << "case_id,config_path,sol_path,sol_mtime\n";
   for (const auto &row : rows) {
     fout << CsvEscape(row.case_id) << ','
@@ -874,10 +850,7 @@ void WriteCaseMetaCsv(const fs::path &path, const vector<CaseMetaRow> &rows) {
 
 void WriteAuditEntriesCsv(const fs::path &path,
                           const vector<AuditEntryRow> &rows) {
-  ofstream fout(path);
-  if (!fout) {
-    throw runtime_error("failed to open CSV for write: " + path.string());
-  }
+  ofstream fout = io::OpenOutputFile(path.string());
   fout << setprecision(12);
   fout << "case_id,config_path,measurement,sample_label,target_t,matched_t,"
           "dt_target,imu_t,dt_imu,row_idx,state_idx,state_name,analytic,"
@@ -908,10 +881,7 @@ void WriteAuditEntriesCsv(const fs::path &path,
 
 void WriteSampleSummaryCsv(const fs::path &path,
                            const vector<SampleSummaryRow> &rows) {
-  ofstream fout(path);
-  if (!fout) {
-    throw runtime_error("failed to open CSV for write: " + path.string());
-  }
+  ofstream fout = io::OpenOutputFile(path.string());
   fout << setprecision(12);
   fout << "case_id,config_path,measurement,sample_label,target_t,matched_t,"
           "dt_target,imu_t,dt_imu,speed_h,yaw_rate_deg_s,odo_speed,y_norm,"
@@ -944,10 +914,7 @@ void WriteSampleSummaryCsv(const fs::path &path,
 
 void WriteOdoComponentCsv(const fs::path &path,
                           const vector<OdoComponentRow> &rows) {
-  ofstream fout(path);
-  if (!fout) {
-    throw runtime_error("failed to open CSV for write: " + path.string());
-  }
+  ofstream fout = io::OpenOutputFile(path.string());
   fout << setprecision(12);
   fout
       << "case_id,config_path,sample_label,target_t,matched_t,dt_target,imu_t,"
@@ -1066,10 +1033,7 @@ void WriteSummaryMarkdown(const fs::path &path,
                           const vector<SampleSummaryRow> &summaries,
                           const vector<AuditEntryRow> &entries,
                           const vector<OdoComponentRow> &odo_components) {
-  ofstream fout(path);
-  if (!fout) {
-    throw runtime_error("failed to open summary for write: " + path.string());
-  }
+  ofstream fout = io::OpenOutputFile(path.string());
 
   fout << "# EXP-20260325-data2-bgz-jacobian-fd-audit-r1\n\n";
   fout << "## Setup\n\n";
@@ -1189,8 +1153,10 @@ AuditBundle RunAuditForConfig(const string &config_path,
   bundle.meta.sol_mtime = FormatFileTime(fs::last_write_time(sol_path));
 
   Vector3d mounting_base_rpy = ComputeMountingBaseRpyRad(options);
-  FejManager fej = BuildFejManager(options, records.front().state);
-  FejManager *fej_ptr = fej.enabled ? &fej : nullptr;
+  InEkfManager inekf = BuildInEkfManager(options, records.front().state);
+  InEkfManager *inekf_ptr = inekf.enabled ? &inekf : nullptr;
+  const MeasurementModelContext measurement_context =
+      BuildMeasurementModelContextFromInEkfConfig(inekf_ptr);
 
   for (double target_t : target_timestamps) {
     int record_idx = FindClosestRecordIndex(records, target_t);
@@ -1213,18 +1179,24 @@ AuditBundle RunAuditForConfig(const string &config_path,
     string sample_label = MakeSampleLabel(target_t);
 
     if (options.constraints.enable_nhc) {
-      auto nhc_analytic = MeasModels::ComputeNhcModel(
-          record.state, C_b_v, omega_ib_b_raw, options.constraints.sigma_nhc_y,
-          options.constraints.sigma_nhc_z, fej_ptr);
+      NhcMeasurementInput nhc_input;
+      nhc_input.state = record.state;
+      nhc_input.C_b_v = C_b_v;
+      nhc_input.omega_ib_b_raw = omega_ib_b_raw;
+      nhc_input.sigma_nhc_y = options.constraints.sigma_nhc_y;
+      nhc_input.sigma_nhc_z = options.constraints.sigma_nhc_z;
+      nhc_input.context = measurement_context;
+      auto nhc_analytic = BuildNhcMeasurement(nhc_input);
       auto nhc_builder = [&](const State &state) -> VectorXd {
         Matrix3d C_b_v_local = BuildVehicleRotation(mounting_base_rpy, state);
-        auto model = MeasModels::ComputeNhcModel(
-            state, C_b_v_local, omega_ib_b_raw, options.constraints.sigma_nhc_y,
-            options.constraints.sigma_nhc_z, fej_ptr);
+        NhcMeasurementInput input = nhc_input;
+        input.state = state;
+        input.C_b_v = C_b_v_local;
+        auto model = BuildNhcMeasurement(input);
         return model.y;
       };
       MatrixXd nhc_numeric = ComputeNumericalJacobian(
-          record.state, fej_ptr, eps, nhc_analytic.y, nhc_builder);
+          record.state, inekf_ptr, eps, nhc_analytic.y, nhc_builder);
       bundle.summaries.push_back(BuildSampleSummary(
           bundle.meta, "NHC", sample_label, target_t, record, imu.t,
           nhc_analytic.y, nhc_analytic.H, nhc_numeric,
@@ -1241,18 +1213,24 @@ AuditBundle RunAuditForConfig(const string &config_path,
         throw runtime_error("failed to reconstruct ODO measurement for state t=" +
                             ToStringPrec(record.t, 6));
       }
-      auto odo_analytic = MeasModels::ComputeOdoModel(
-          record.state, odo_speed, C_b_v, omega_ib_b_raw,
-          options.constraints.sigma_odo, fej_ptr);
+      OdoMeasurementInput odo_input;
+      odo_input.state = record.state;
+      odo_input.odo_speed = odo_speed;
+      odo_input.C_b_v = C_b_v;
+      odo_input.omega_ib_b_raw = omega_ib_b_raw;
+      odo_input.sigma_odo = options.constraints.sigma_odo;
+      odo_input.context = measurement_context;
+      auto odo_analytic = BuildOdoMeasurement(odo_input);
       auto odo_builder = [&](const State &state) -> VectorXd {
         Matrix3d C_b_v_local = BuildVehicleRotation(mounting_base_rpy, state);
-        auto model = MeasModels::ComputeOdoModel(
-            state, odo_speed, C_b_v_local, omega_ib_b_raw,
-            options.constraints.sigma_odo, fej_ptr);
+        OdoMeasurementInput input = odo_input;
+        input.state = state;
+        input.C_b_v = C_b_v_local;
+        auto model = BuildOdoMeasurement(input);
         return model.y;
       };
       MatrixXd odo_numeric = ComputeNumericalJacobian(
-          record.state, fej_ptr, eps, odo_analytic.y, odo_builder);
+          record.state, inekf_ptr, eps, odo_analytic.y, odo_builder);
       bundle.summaries.push_back(BuildSampleSummary(
           bundle.meta, "ODO", sample_label, target_t, record, imu.t,
           odo_analytic.y, odo_analytic.H, odo_numeric, odo_speed));
@@ -1261,7 +1239,7 @@ AuditBundle RunAuditForConfig(const string &config_path,
                          odo_speed, bundle.entries);
       bundle.odo_components.push_back(BuildOdoComponentRow(
           bundle.meta, sample_label, target_t, record, imu.t, odo_speed,
-          record.state, C_b_v, omega_ib_b_raw, fej_ptr));
+          record.state, C_b_v, omega_ib_b_raw, inekf_ptr));
     }
   }
 

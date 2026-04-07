@@ -8,8 +8,8 @@
 #include <utility>
 #include <vector>
 
-#include "core/eskf.h"
 #include "core/uwb.h"
+#include "navigation/state_defs.h"
 #include "utils/math_utils.h"
 
 using namespace std;
@@ -259,13 +259,11 @@ struct ConstraintConfig {
 };
 
 /**
- * InEKF 配置（复用原 FEJ 配置节）。
+ * InEKF 配置。
  * `enable=true` 表示启用 Right-Invariant EKF 模式。
- * 其余字段仅为兼容旧配置保留，当前实现中均为 no-op。
  */
-struct FejConfig {
+struct InEkfOptions {
   bool enable = false;
-  bool true_iekf_mode = false;
   bool apply_covariance_floor_after_reset = false;
   bool enable_layer2 = true;    // deprecated
   int imu_window_size = 100;    // deprecated
@@ -458,7 +456,7 @@ struct FusionOptions {
   GnssSchedule gnss_schedule;
   GatingConfig gating;
   ConstraintConfig constraints;
-  FejConfig fej;
+  InEkfOptions inekf;
   StateAblationConfig ablation;
   PostGnssAblationConfig post_gnss_ablation;
   vector<RuntimePhaseConfig> runtime_phases;
@@ -608,6 +606,31 @@ struct FusionResult {
   vector<Vector3d> gnss_lever_arm;  // GNSS天线杆臂估计值
 };
 
+struct FusionRuntimeStats {
+  size_t imu_steps = 0;
+  size_t gnss_exact_calls = 0;
+  size_t gnss_update_calls = 0;
+  size_t gnss_samples = 0;
+  size_t gnss_align_prev_count = 0;
+  size_t gnss_split_predict_count = 0;
+  size_t gnss_align_curr_predict_count = 0;
+  size_t gnss_tail_predict_count = 0;
+  size_t direct_predict_count = 0;
+  double predict_s = 0.0;
+  double gnss_exact_s = 0.0;
+  double gnss_update_s = 0.0;
+  double zupt_s = 0.0;
+  double gravity_diag_s = 0.0;
+  double uwb_s = 0.0;
+  double step_diag_s = 0.0;
+  double diag_write_s = 0.0;
+};
+
+struct FusionRuntimeOutput {
+  FusionResult result;
+  FusionRuntimeStats stats;
+};
+
 struct GnssSplitCovarianceCapture {
   bool valid = false;
   string tag;
@@ -646,6 +669,14 @@ struct FusionDebugCapture {
  * 读取并组织全量数据集（IMU/UWB/真值/基站）。
  */
 Dataset LoadDataset(const FusionOptions &options);
+
+/**
+ * 执行融合运行时主流程，并返回结果与运行时统计。
+ */
+FusionRuntimeOutput RunFusionRuntime(
+    const FusionOptions &options, const Dataset &dataset, const State &x0,
+    const Matrix<double, kStateDim, kStateDim> &P0,
+    FusionDebugCapture *debug_capture = nullptr);
 
 /**
  * 执行融合主流程，输出融合轨迹与纯惯导轨迹。

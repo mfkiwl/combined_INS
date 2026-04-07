@@ -4,7 +4,8 @@
 #include <Eigen/Dense>
 #include <string>
 
-#include "core/eskf.h"
+#include "navigation/measurement_model.h"
+#include "navigation/state_defs.h"
 
 using namespace std;
 using namespace Eigen;
@@ -33,8 +34,8 @@ Anchors AutoPlaceAnchors(const MatrixXd &pos_xyz, double margin = 1.0);
 namespace MeasModels {
 
 /**
- * UWB 量测模型输出。
- * y 为残差向量，H 为观测矩阵，R 为量测噪声。
+ * 兼容旧调用方的 UWB 量测模型输出。
+ * 具体构造逻辑委托给 navigation/measurement_model.h 中的统一 builder。
  */
 struct UwbModel {
   // 残差 y，观测矩阵 H，量测噪声 R
@@ -44,8 +45,8 @@ struct UwbModel {
 };
 
 /**
- * 速度约束伪量测模型输出。
- * y 为残差向量，H 为观测矩阵，R 为量测噪声。
+ * 兼容旧调用方的速度约束量测模型输出。
+ * 具体构造逻辑委托给 navigation/measurement_model.h 中的统一 builder。
  */
 struct VelConstraintModel {
   VectorXd y;
@@ -83,7 +84,7 @@ VelConstraintModel ComputeZuptModel(const State &state, double sigma_zupt);
 VelConstraintModel ComputeNhcModel(const State &state, const Matrix3d &C_b_v,
                                    const Vector3d &omega_ib_b_raw,
                                    double sigma_nhc_y, double sigma_nhc_z,
-                                   const FejManager *fej = nullptr);
+                                   const InEkfManager *inekf = nullptr);
 
 /**
  * 里程计（ODO）前向速度约束：车体前向速度为量测值。
@@ -100,7 +101,7 @@ VelConstraintModel ComputeOdoModel(const State &state, double odo_speed,
                                    const Matrix3d &C_b_v,
                                    const Vector3d &omega_ib_b_raw,
                                    double sigma_odo,
-                                   const FejManager *fej = nullptr);
+                                   const InEkfManager *inekf = nullptr);
 
 /**
  * GNSS位置量测模型。
@@ -112,7 +113,7 @@ VelConstraintModel ComputeOdoModel(const State &state, double odo_speed,
  */
 UwbModel ComputeGnssPositionModel(const State &state, const Vector3d &z,
                                   const Vector3d &sigma_gnss,
-                                  const FejManager *fej = nullptr);
+                                  const InEkfManager *inekf = nullptr);
 
 /**
  * GNSS速度量测模型。
@@ -125,6 +126,6 @@ UwbModel ComputeGnssPositionModel(const State &state, const Vector3d &z,
  */
 UwbModel ComputeGnssVelocityModel(const State &state, const Vector3d &z_gnss_vel,
                                   const Vector3d &omega_ib_b_raw, const Vector3d &sigma_gnss_vel,
-                                  const FejManager *fej = nullptr);
+                                  const InEkfManager *inekf = nullptr);
 
 }  // namespace MeasModels

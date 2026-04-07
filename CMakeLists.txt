@@ -34,6 +34,17 @@ add_library(uwb_core
   src/core/eskf_engine.cpp
   src/core/measurement_models_uwb.cpp
   src/core/anchors.cpp
+  src/navigation/filter_contracts.cpp
+  src/navigation/filter_engine.cpp
+  src/navigation/filter_reset.cpp
+  src/navigation/measurement_model_common.cpp
+  src/navigation/measurement_model_gnss.cpp
+  src/navigation/measurement_model_road.cpp
+  src/navigation/measurement_model_uwb.cpp
+  src/navigation/nominal_propagation.cpp
+  src/navigation/process_model_standard_eskf.cpp
+  src/navigation/process_model_inekf.cpp
+  src/navigation/process_noise_mapping.cpp
 )
 target_include_directories(uwb_core PUBLIC include ${eigen_SOURCE_DIR})
 target_link_libraries(uwb_core PUBLIC uwb_utils Eigen3::Eigen)
@@ -48,6 +59,11 @@ add_library(uwb_app
   src/app/config.cpp
   src/app/dataset_loader.cpp
   src/app/initialization.cpp
+  src/app/fusion_runtime.cpp
+  src/app/fusion_scheduler.cpp
+  src/app/fusion_update_runner.cpp
+  src/app/fusion_phase_controls.cpp
+  src/app/fusion_diagnostics_runtime.cpp
   src/app/pipeline_fusion.cpp
   src/app/evaluation.cpp
   src/app/diagnostics.cpp
@@ -62,7 +78,7 @@ add_executable(uwb_generator apps/uwb_generator_main.cpp)
 target_link_libraries(uwb_generator PRIVATE uwb_app)
 
 add_executable(data_converter apps/data_converter_main.cpp)
-target_link_libraries(data_converter PRIVATE uwb_utils Eigen3::Eigen)
+target_link_libraries(data_converter PRIVATE uwb_utils uwb_io Eigen3::Eigen)
 
 add_executable(jacobian_audit apps/jacobian_audit_main.cpp)
 target_link_libraries(jacobian_audit PRIVATE uwb_app)

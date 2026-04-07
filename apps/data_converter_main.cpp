@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "io/data_io.h"
 #include "utils/math_utils.h"
 
 using namespace std;
@@ -110,11 +111,7 @@ vector<RawPos> LoadPos(const string &path) {
  */
 void SaveImu(const string &path, const vector<RawImu> &imu, double t0) {
   (void)t0;  // 保留参数以兼容调用，未使用
-  ofstream fout(path);
-  if (!fout) {
-    cerr << "无法写入 IMU 输出: " << path << "\n";
-    return;
-  }
+  ofstream fout = io::OpenOutputFile(path);
   fout << "timestamp dtheta_x dtheta_y dtheta_z dvel_x dvel_y dvel_z\n";
   for (size_t i = 0; i < imu.size(); ++i) {
     double dt = 0.0;
@@ -145,11 +142,7 @@ void SaveImu(const string &path, const vector<RawImu> &imu, double t0) {
 void SavePos(const string &path, const vector<RawPos> &pos, double t0) {
   (void)t0;  // 保留参数以兼容调用，未使用
   if (pos.empty()) return;
-  ofstream fout(path);
-  if (!fout) {
-    cerr << "无法写入 POS 输出: " << path << "\n";
-    return;
-  }
+  ofstream fout = io::OpenOutputFile(path);
   fout << "timestamp x y z vx vy vz roll pitch yaw\n";
   fout << fixed << setprecision(15);
   for (const auto &p : pos) {
@@ -181,24 +174,29 @@ void SavePos(const string &path, const vector<RawPos> &pos, double t0) {
  * 读取原始 IMU/POS 文件并输出工程格式（ECEF 坐标、四元数）。
  */
 int main(int argc, char **argv) {
-  const string imu_in = (argc > 1) ? argv[1] : "IMU.txt";
-  const string pos_in = (argc > 2) ? argv[2] : "REF_NAV.txt";
-  const string imu_out = (argc > 3) ? argv[3] : "IMU_converted.txt";
-  const string pos_out = (argc > 4) ? argv[4] : "POS_converted.txt";
+  try {
+    const string imu_in = (argc > 1) ? argv[1] : "IMU.txt";
+    const string pos_in = (argc > 2) ? argv[2] : "REF_NAV.txt";
+    const string imu_out = (argc > 3) ? argv[3] : "IMU_converted.txt";
+    const string pos_out = (argc > 4) ? argv[4] : "POS_converted.txt";
 
-  // 1) 加载原始 IMU/POS
-  vector<RawImu> imu = LoadImu(imu_in);
-  vector<RawPos> pos = LoadPos(pos_in);
-  if (imu.empty() || pos.empty()) {
-    cerr << "输入数据为空，转换中止\n";
+    // 1) 加载原始 IMU/POS
+    vector<RawImu> imu = LoadImu(imu_in);
+    vector<RawPos> pos = LoadPos(pos_in);
+    if (imu.empty() || pos.empty()) {
+      cerr << "输入数据为空，转换中止\n";
+      return 1;
+    }
+
+    // 2) 输出符合工程格式的 IMU/POS（保留原始绝对时间）
+    SaveImu(imu_out, imu, 0.0);
+    SavePos(pos_out, pos, 0.0);
+
+    cout << "转换完成:\n  IMU -> " << imu_out << "\n  POS -> " << pos_out << "\n";
+    cout << "已保留原始绝对时间戳，无时间平移。\n";
+    return 0;
+  } catch (const exception &e) {
+    cerr << "转换失败: " << e.what() << "\n";
     return 1;
   }
-
-  // 2) 输出符合工程格式的 IMU/POS（保留原始绝对时间）
-  SaveImu(imu_out, imu, 0.0);
-  SavePos(pos_out, pos, 0.0);
-
-  cout << "转换完成:\n  IMU -> " << imu_out << "\n  POS -> " << pos_out << "\n";
-  cout << "已保留原始绝对时间戳，无时间平移。\n";
-  return 0;
 }

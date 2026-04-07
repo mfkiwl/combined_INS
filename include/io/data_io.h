@@ -2,6 +2,7 @@
 #pragma once
 
 #include <Eigen/Dense>
+#include <fstream>
 #include <string>
 
 namespace io {
@@ -14,6 +15,14 @@ using namespace Eigen;
  * 支持空格或逗号分隔，自动跳过表头或非数值行。
  */
 MatrixXd LoadMatrix(const string &path, int cols);
+
+/**
+ * 打开输出文件，自动创建父目录并在失败时抛出异常。
+ * @param path 输出文件路径
+ * @param mode 打开模式，默认覆盖写
+ */
+ofstream OpenOutputFile(const string &path,
+                        ios::openmode mode = ios::out | ios::trunc);
 
 /**
  * 保存矩阵到文本文件，可附带表头。

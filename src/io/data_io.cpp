@@ -1,16 +1,40 @@
 #include "io/data_io.h"
 
 #include <algorithm>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 #include <vector>
 
 namespace io {
 
 using namespace std;
 using namespace Eigen;
+namespace fs = std::filesystem;
+
+namespace {
+
+void EnsureParentDir(const string &path) {
+  const fs::path out_path(path);
+  const fs::path parent = out_path.parent_path();
+  if (!parent.empty()) {
+    fs::create_directories(parent);
+  }
+}
+
+}  // namespace
+
+ofstream OpenOutputFile(const string &path, ios::openmode mode) {
+  EnsureParentDir(path);
+  ofstream fout(path, mode);
+  if (!fout) {
+    throw runtime_error("failed to open output file: " + path);
+  }
+  return fout;
+}
 
 /**
  * 从文本文件读取指定列数的矩阵。
@@ -63,11 +87,7 @@ MatrixXd LoadMatrix(const string &path, int cols) {
  */
 void SaveMatrix(const string &path, const MatrixXd &mat,
                 const string &header) {
-  ofstream fout(path);
-  if (!fout) {
-    cout << "error: 无法写入文件 " << path << "\n";
-    return;
-  }
+  ofstream fout = OpenOutputFile(path);
   // 可选表头写入
   if (!header.empty()) {
     fout << header << "\n";

@@ -1,7 +1,7 @@
 #include "app/fusion.h"
 
-#include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
@@ -11,7 +11,6 @@
 
 using namespace std;
 using namespace Eigen;
-namespace fs = std::filesystem;
 
 namespace {
 constexpr double kDegToRad = 3.14159265358979323846 / 180.0;
@@ -31,13 +30,6 @@ Vector3d ResolveMountingBaseRpyRad(const FusionOptions &options) {
   return Vector3d(cfg_mounting_rpy.x(),
                   init_pitch_nonzero ? 0.0 : cfg_mounting_rpy.y(),
                   init_yaw_nonzero ? 0.0 : cfg_mounting_rpy.z());
-}
-
-void EnsureParentDir(const string &path) {
-  fs::path out_path(path);
-  if (!out_path.parent_path().empty()) {
-    fs::create_directories(out_path.parent_path());
-  }
 }
 
 void EnsureSeriesSize(size_t expected, size_t actual, const string &name) {
@@ -164,11 +156,7 @@ void SaveStateSeries(const string &path, const FusionResult &result,
   EnsureSeriesSize(n, result.lever_arm.size(), "lever_arm");
   EnsureSeriesSize(n, result.gnss_lever_arm.size(), "gnss_lever_arm");
 
-  EnsureParentDir(path);
-  ofstream fout(path);
-  if (!fout.is_open()) {
-    throw runtime_error("failed to open state series output: " + path);
-  }
+  ofstream fout = io::OpenOutputFile(path);
 
   Vector3d mounting_base_rpy = ResolveMountingBaseRpyRad(options);
   fout << fixed << setprecision(9);

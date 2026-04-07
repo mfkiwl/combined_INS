@@ -13,6 +13,7 @@
 
 #include "app/fusion.h"
 #include "core/eskf.h"
+#include "io/data_io.h"
 #include "utils/math_utils.h"
 
 using namespace std;
@@ -555,7 +556,7 @@ void DiagnosticsEngine::Initialize(const Dataset &dataset, const FusionOptions &
 
   // 打开 DIAG.txt 并写表头
   if (impl_->config.enable_diagnostics) {
-    impl_->diag_file.open("DIAG.txt");
+    impl_->diag_file = io::OpenOutputFile("DIAG.txt");
   }
   if (impl_->diag_file.is_open()) {
     impl_->diag_file << fixed << setprecision(8);
@@ -576,14 +577,11 @@ void DiagnosticsEngine::Initialize(const Dataset &dataset, const FusionOptions &
     fs::path sol_path(options.output_path);
     fs::path mechanism_path =
         sol_path.parent_path() / (sol_path.stem().string() + "_mechanism.csv");
-    if (!mechanism_path.parent_path().empty()) {
-      fs::create_directories(mechanism_path.parent_path());
-    }
-    impl_->mechanism_file.open(mechanism_path, ios::out | ios::trunc);
+    impl_->mechanism_file = io::OpenOutputFile(mechanism_path.string());
     if (impl_->mechanism_file.is_open()) {
       impl_->mechanism_file << fixed << setprecision(9);
       impl_->mechanism_file
-          << "tag,t_meas,t_state,post_gnss,used_true_iekf,y_dim,y_norm,nis,s_trace,"
+          << "tag,t_meas,t_state,post_gnss,used_inekf,y_dim,y_norm,nis,s_trace,"
           << "dx_att_z,dx_bg_z,dx_mount_yaw,"
           << "k_row_att_z_norm,k_row_bg_z_norm,k_row_mount_yaw_norm,"
           << "k_att_z_vec,k_bg_z_vec,k_mount_yaw_vec,"
@@ -618,14 +616,11 @@ void DiagnosticsEngine::Initialize(const Dataset &dataset, const FusionOptions &
 
   if (!options.first_update_debug_output_path.empty()) {
     fs::path first_update_path(options.first_update_debug_output_path);
-    if (!first_update_path.parent_path().empty()) {
-      fs::create_directories(first_update_path.parent_path());
-    }
-    impl_->first_update_file.open(first_update_path, ios::out | ios::trunc);
+    impl_->first_update_file = io::OpenOutputFile(first_update_path.string());
     if (impl_->first_update_file.is_open()) {
       impl_->first_update_file << fixed << setprecision(9);
       impl_->first_update_file
-          << "tag,gnss_axis,gnss_t,state_t,used_true_iekf,"
+          << "tag,gnss_axis,gnss_t,state_t,used_inekf,"
           << "lever_before,lever_after,dx_gnss_lever,"
           << "state_p_before_ecef,state_v_before_ecef,state_q_before_wxyz,"
           << "state_p_after_ecef,"
@@ -635,14 +630,11 @@ void DiagnosticsEngine::Initialize(const Dataset &dataset, const FusionOptions &
 
   if (!options.gnss_update_debug_output_path.empty()) {
     fs::path gnss_update_path(options.gnss_update_debug_output_path);
-    if (!gnss_update_path.parent_path().empty()) {
-      fs::create_directories(gnss_update_path.parent_path());
-    }
-    impl_->gnss_update_file.open(gnss_update_path, ios::out | ios::trunc);
+    impl_->gnss_update_file = io::OpenOutputFile(gnss_update_path.string());
     if (impl_->gnss_update_file.is_open()) {
       impl_->gnss_update_file << fixed << setprecision(9);
       impl_->gnss_update_file
-          << "tag,gnss_t,state_t,used_true_iekf,"
+          << "tag,gnss_t,state_t,used_inekf,"
           << "y_x,y_y,y_z,y_norm,"
           << "state_p_before_x,state_p_before_y,state_p_before_z,"
           << "state_q_before_w,state_q_before_x,state_q_before_y,state_q_before_z,"
@@ -690,10 +682,7 @@ void DiagnosticsEngine::Initialize(const Dataset &dataset, const FusionOptions &
 
   if (!options.predict_debug_output_path.empty()) {
     fs::path predict_debug_path(options.predict_debug_output_path);
-    if (!predict_debug_path.parent_path().empty()) {
-      fs::create_directories(predict_debug_path.parent_path());
-    }
-    impl_->predict_debug_file.open(predict_debug_path, ios::out | ios::trunc);
+    impl_->predict_debug_file = io::OpenOutputFile(predict_debug_path.string());
     if (impl_->predict_debug_file.is_open()) {
       impl_->predict_debug_file << fixed << setprecision(9);
       impl_->predict_debug_file
@@ -854,7 +843,7 @@ bool DiagnosticsEngine::Correct(EskfEngine &engine, const string &tag, double t,
         impl_->mechanism_file
             << tag << "," << t << "," << snap.t_state << ","
             << (post_gnss ? 1 : 0) << ","
-            << (snap.used_true_iekf ? 1 : 0) << ","
+            << (snap.used_inekf ? 1 : 0) << ","
             << snap.y.size() << "," << snap.y.norm() << ","
             << SafeNisFromInnovation(snap.S, snap.y) << ","
             << snap.S.trace() << ","
@@ -946,7 +935,7 @@ bool DiagnosticsEngine::Correct(EskfEngine &engine, const string &tag, double t,
         double lever_after = engine.state().gnss_lever_arm(axis);
         impl_->first_update_file
             << tag << "," << kAxes[axis] << "," << t << ","
-            << snap.t_state << "," << (snap.used_true_iekf ? 1 : 0) << ","
+            << snap.t_state << "," << (snap.used_inekf ? 1 : 0) << ","
             << lever_before << "," << lever_after << ","
             << snap.dx(StateIdx::kGnssLever + axis) << ","
             << VectorToCsvField(state_before.p) << ","
@@ -1095,7 +1084,7 @@ bool DiagnosticsEngine::Correct(EskfEngine &engine, const string &tag, double t,
       }
       impl_->gnss_update_file
           << tag << "," << t << "," << snap.t_state << ","
-          << (snap.used_true_iekf ? 1 : 0) << ","
+          << (snap.used_inekf ? 1 : 0) << ","
           << innovation_at(0) << "," << innovation_at(1) << ","
           << innovation_at(2) << "," << snap.y.norm() << ","
           << state_before.p.x() << "," << state_before.p.y() << ","

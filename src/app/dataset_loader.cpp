@@ -93,7 +93,11 @@ Dataset LoadDataset(const FusionOptions &options) {
     uwb_mat = io::LoadMatrix(options.uwb_path, uwb_cols);
   }
 
-  MatrixXd truth_raw = io::LoadMatrix(options.pos_path, 10);
+  int truth_cols = DetectNumericColumnCount(options.pos_path);
+  if (truth_cols <= 0) {
+    throw invalid_argument("error: Truth 文件为空或无有效数值行: " + options.pos_path);
+  }
+  MatrixXd truth_raw = io::LoadMatrix(options.pos_path, truth_cols);
 
   MatrixXd odo_mat;
   if (!options.odo_path.empty()) {
@@ -105,10 +109,45 @@ Dataset LoadDataset(const FusionOptions &options) {
   data.odo = odo_mat;
 
   int n_truth = truth_raw.rows();
-  data.truth.timestamps = truth_raw.col(0);
-  data.truth.positions = truth_raw.block(0, 1, n_truth, 3);
-  data.truth.velocities = truth_raw.block(0, 4, n_truth, 3);
+  const bool truth_has_week_sow_prefix = truth_cols >= 11;
+  bool truth_uses_second_column_time = false;
+  if (truth_has_week_sow_prefix && n_truth > 0) {
+    const double detect_tol = max(options.gating.time_tolerance, 1.0e-6);
+    const double col0_first = truth_raw(0, 0);
+    const double col0_last = truth_raw(n_truth - 1, 0);
+    const double col1_first = truth_raw(0, 1);
+    const double col1_last = truth_raw(n_truth - 1, 1);
+    const double col0_span = std::abs(col0_last - col0_first);
+    const double col1_span = std::abs(col1_last - col1_first);
+    const bool col0_overlaps_window =
+        (col0_first - detect_tol <= options.final_time &&
+         col0_last + detect_tol >= options.start_time);
+    const bool col1_overlaps_window =
+        (col1_first - detect_tol <= options.final_time &&
+         col1_last + detect_tol >= options.start_time);
+    const bool col0_looks_like_week_prefix =
+        (std::abs(col0_first) >= 1000.0 && std::abs(col0_first) < 10000.0 &&
+         col0_span <= detect_tol * 10.0);
+    const bool col1_looks_like_time_axis =
+        (std::abs(col1_first) >= 1000.0 && col1_span > detect_tol);
+    truth_uses_second_column_time =
+        (col0_looks_like_week_prefix && col1_looks_like_time_axis) ||
+        (!col0_overlaps_window && col1_overlaps_window);
+  }
+
+  const int truth_time_col = truth_uses_second_column_time ? 1 : 0;
+  const int truth_pos_col = truth_uses_second_column_time ? 2 : 1;
+  const int truth_vel_col = truth_uses_second_column_time ? 5 : 4;
+  const int truth_rpy_col = truth_uses_second_column_time ? 8 : 7;
+
+  data.truth.timestamps = truth_raw.col(truth_time_col);
+  data.truth.positions = truth_raw.block(0, truth_pos_col, n_truth, 3);
+  data.truth.velocities = truth_raw.block(0, truth_vel_col, n_truth, 3);
   data.truth.quaternions.resize(n_truth, 4);
+
+  if (truth_uses_second_column_time) {
+    cout << "[Load] Detected week+sow truth format, using column 1 as time.\n";
+  }
 
   bool truth_is_lla = (n_truth > 0 &&
       data.truth.positions.row(0).head<2>().cwiseAbs().maxCoeff() < 200.0);
@@ -135,9 +174,9 @@ Dataset LoadDataset(const FusionOptions &options) {
       EcefToLatLon(p, lat, lon);
     }
     Matrix3d R_ne = RotNedToEcef(lat, lon);
-    Matrix3d R_nb = EulerToRotation(truth_raw(i, 7) * kDegToRad,
-                                    truth_raw(i, 8) * kDegToRad,
-                                    truth_raw(i, 9) * kDegToRad);
+    Matrix3d R_nb = EulerToRotation(truth_raw(i, truth_rpy_col + 0) * kDegToRad,
+                                    truth_raw(i, truth_rpy_col + 1) * kDegToRad,
+                                    truth_raw(i, truth_rpy_col + 2) * kDegToRad);
     Quaterniond q(R_ne * R_nb);
     q.normalize();
     data.truth.quaternions.row(i) << q.w(), q.x(), q.y(), q.z();

@@ -20,6 +20,7 @@
 #include "core/eskf.h"
 #include "core/uwb.h"
 #include "io/data_io.h"
+#include "navigation/measurement_model.h"
 #include "utils/math_utils.h"
 
 using namespace std;
@@ -56,6 +57,10 @@ struct AuditModel {
   VectorXd y;
   MatrixXd H;
 };
+
+AuditModel ToAuditModel(const MeasurementLinearization &model) {
+  return {model.y, model.H};
+}
 
 struct BlockSpec {
   string name;
@@ -163,7 +168,7 @@ string DatasetTagFromPath(const string &path) {
   return p.stem().string();
 }
 
-Matrix<double, kStateDim, kStateDim> BuildTrueInEkfResetGammaFromDx(
+Matrix<double, kStateDim, kStateDim> BuildInEkfResetGammaFromDx(
     const Matrix<double, kStateDim, 1> &dx) {
   Matrix<double, kStateDim, kStateDim> Gamma =
       Matrix<double, kStateDim, kStateDim>::Identity();
@@ -641,17 +646,13 @@ vector<AuditSample> SelectGnssVelocitySamples(const Dataset &dataset,
 }
 
 
-bool UseTrueInEkf(const FejManager *fej) {
-  return fej != nullptr && fej->UseTrueInEkfMode();
-}
-
-bool UseHybridInEkf(const FejManager *fej) {
-  return fej != nullptr && fej->enabled && !fej->true_iekf_mode;
+bool UseInEkf(const InEkfManager *inekf) {
+  return inekf != nullptr && inekf->enabled;
 }
 
 State ApplyErrorState(const State &nominal,
                       const VectorXd &dx,
-                      const FejManager *fej) {
+                      const InEkfManager *inekf) {
   State out = nominal;
   Vector3d dr_ned = dx.segment<3>(StateIdx::kPos);
   Vector3d dv_ned = dx.segment<3>(StateIdx::kVel);
@@ -660,10 +661,9 @@ State ApplyErrorState(const State &nominal,
   Llh llh = EcefToLlh(nominal.p);
   Matrix3d R_ne = RotNedToEcef(llh);
   Matrix3d C_bn = R_ne.transpose() * QuatToRot(nominal.q);
-  bool use_true_iekf = UseTrueInEkf(fej);
-  bool use_hybrid_inekf = UseHybridInEkf(fej);
+  bool use_inekf = UseInEkf(inekf);
 
-  if (use_true_iekf) {
+  if (use_inekf) {
     Vector3d rho_p_body = dr_ned;
     Vector3d rho_v_body = dv_ned;
     Vector3d phi_body = dphi_ned;
@@ -676,26 +676,12 @@ State ApplyErrorState(const State &nominal,
     Vector4d dq = QuatFromSmallAngle(phi_body);
     out.q = NormalizeQuat(QuatMultiply(out.q, dq));
   } else {
-    if (use_hybrid_inekf) {
-      Vector3d v_ned_nom = R_ne.transpose() * nominal.v;
-      dv_ned -= Skew(v_ned_nom) * dphi_ned;
-      if (fej->ri_inject_pos_inverse) {
-        Vector3d p_ned_local = R_ne.transpose() * (nominal.p - fej->p_init_ecef);
-        dr_ned -= Skew(p_ned_local) * dphi_ned;
-      }
-    }
-
     out.p += R_ne * dr_ned;
     out.v += R_ne * dv_ned;
 
     Vector3d dphi_ecef = R_ne * dphi_ned;
-    if (use_hybrid_inekf) {
-      Vector4d dq = QuatFromSmallAngle(dphi_ecef);
-      out.q = NormalizeQuat(QuatMultiply(dq, out.q));
-    } else {
-      Vector4d dq = QuatFromSmallAngle(-dphi_ecef);
-      out.q = NormalizeQuat(QuatMultiply(dq, out.q));
-    }
+    Vector4d dq = QuatFromSmallAngle(-dphi_ecef);
+    out.q = NormalizeQuat(QuatMultiply(dq, out.q));
   }
 
   out.ba += dx.segment<3>(StateIdx::kBa);
@@ -736,7 +722,7 @@ AuditModel EvaluateModel(const State &state, ModelBuilder &&builder) {
 
 template <typename ModelBuilder>
 MatrixXd ComputeNumericalJacobian(const State &nominal,
-                                  const FejManager *fej,
+                                  const InEkfManager *inekf,
                                   const VectorXd &eps,
                                   ModelBuilder &&builder) {
   AuditModel nominal_model = builder(nominal);
@@ -745,8 +731,8 @@ MatrixXd ComputeNumericalJacobian(const State &nominal,
   for (int j = 0; j < kStateDim; ++j) {
     VectorXd dx = VectorXd::Zero(kStateDim);
     dx(j) = eps(j);
-    State plus = ApplyErrorState(nominal, dx, fej);
-    State minus = ApplyErrorState(nominal, -dx, fej);
+    State plus = ApplyErrorState(nominal, dx, inekf);
+    State minus = ApplyErrorState(nominal, -dx, inekf);
     AuditModel model_plus = builder(plus);
     AuditModel model_minus = builder(minus);
     H_num.col(j) = -(model_plus.y - model_minus.y) / (2.0 * eps(j));
@@ -839,7 +825,7 @@ vector<ColumnError> ComputeColumnErrors(const string &dataset,
 
 void SaveSelectedSamplesCsv(const fs::path &path,
                             const vector<AuditSummary> &summaries) {
-  ofstream fout(path);
+  ofstream fout = io::OpenOutputFile(path.string());
   fout << "dataset,config,measurement,t_meas,t_state,split_t,speed_h,yaw_rate_deg_s,turn_score,record_idx,meas_idx\n";
   for (const auto &summary : summaries) {
     for (const auto &sample : summary.samples) {
@@ -860,7 +846,7 @@ void SaveSelectedSamplesCsv(const fs::path &path,
 
 void SaveBlockErrorsCsv(const fs::path &path,
                         const vector<AuditSummary> &summaries) {
-  ofstream fout(path);
+  ofstream fout = io::OpenOutputFile(path.string());
   fout << "dataset,measurement,t,speed_h,yaw_rate_deg_s,block,analytic_norm,numeric_norm,diff_norm,rel_fro,max_abs,worst_row,worst_col,worst_state\n";
   for (const auto &summary : summaries) {
     for (const auto &err : summary.block_errors) {
@@ -884,7 +870,7 @@ void SaveBlockErrorsCsv(const fs::path &path,
 
 void SaveColumnErrorsCsv(const fs::path &path,
                          const vector<AuditSummary> &summaries) {
-  ofstream fout(path);
+  ofstream fout = io::OpenOutputFile(path.string());
   fout << "dataset,measurement,t,speed_h,yaw_rate_deg_s,col,state_name,analytic_norm,numeric_norm,diff_norm,rel,max_abs\n";
   for (const auto &summary : summaries) {
     for (const auto &err : summary.column_errors) {
@@ -906,7 +892,7 @@ void SaveColumnErrorsCsv(const fs::path &path,
 
 void SaveSplitCovarianceCsv(const fs::path &path,
                             const vector<AuditSummary> &summaries) {
-  ofstream fout(path);
+  ofstream fout = io::OpenOutputFile(path.string());
   fout << "dataset,config,tag,split_t,t_meas,t_state,"
           "P_attx_bgz,P_atty_bgz,P_attz_bgz,"
           "corr_attx_bgz,corr_atty_bgz,corr_attz_bgz,"
@@ -935,7 +921,7 @@ void SaveSplitCovarianceCsv(const fs::path &path,
 
 void SaveResetConsistencyCsv(const fs::path &path,
                              const vector<AuditSummary> &summaries) {
-  ofstream fout(path);
+  ofstream fout = io::OpenOutputFile(path.string());
   fout << "dataset,config,tag,split_t,t_meas,t_state,"
           "floor_applied,expected_norm,actual_norm,diff_norm,rel_fro,max_abs,"
           "worst_row,worst_col,p_tilde_path,p_expected_path,p_after_reset_path,dx_path\n";
@@ -1008,10 +994,10 @@ vector<ColumnError> CollectWorstColumns(const vector<AuditSummary> &summaries,
 void SaveSummaryMarkdown(const fs::path &path,
                          const vector<AuditSummary> &summaries,
                          const VectorXd &eps) {
-  ofstream fout(path);
+  ofstream fout = io::OpenOutputFile(path.string());
   fout << "# Jacobian Audit Summary\n\n";
   fout << "- Target: `GNSS_POS/GNSS_VEL/ODO/NHC` numeric-Jacobian audit + optional GNSS split covariance + update-reset-covariance consistency\n";
-  fout << "- Modes: audit the mode actually specified by each config (current run uses `true_iekf`)\n";
+  fout << "- Modes: audit the mode actually specified by each config (current run uses `inekf`)\n";
   fout << "- Finite difference: central difference on filter-consistent error injection\n";
   fout << "- Residual convention: compare analytic `H` against `-d(y)/d(dx)` because code stores `y = z - h`\n";
   fout << "- Step sizes: `pos=1e-3 m`, `vel=1e-4 m/s`, `att/mount=1e-7 rad`, `bg=1e-6 rad/s`, `sg/odo=1e-6`, `lever=1e-5 m`\n\n";
@@ -1143,16 +1129,23 @@ AuditSummary RunAuditForConfig(const string &config_path,
   }
   summary.samples = road_samples;
 
-  FejManager fej;
-  fej.Enable(options.fej.enable);
-  fej.true_iekf_mode = options.fej.true_iekf_mode;
-  fej.apply_covariance_floor_after_reset =
-      options.fej.apply_covariance_floor_after_reset;
-  fej.ri_gnss_pos_use_p_ned_local = options.fej.ri_gnss_pos_use_p_ned_local;
-  fej.ri_vel_gyro_noise_mode = options.fej.ri_vel_gyro_noise_mode;
-  fej.ri_inject_pos_inverse = options.fej.ri_inject_pos_inverse;
-  fej.p_init_ecef = records.front().state.p;
-  FejManager *fej_ptr = fej.enabled ? &fej : nullptr;
+  InEkfManager inekf;
+  inekf.Enable(options.inekf.enable);
+  inekf.apply_covariance_floor_after_reset =
+      options.inekf.apply_covariance_floor_after_reset;
+  inekf.ri_gnss_pos_use_p_ned_local = options.inekf.ri_gnss_pos_use_p_ned_local;
+  inekf.ri_vel_gyro_noise_mode = options.inekf.ri_vel_gyro_noise_mode;
+  inekf.ri_inject_pos_inverse = options.inekf.ri_inject_pos_inverse;
+  inekf.debug_force_process_model = options.inekf.debug_force_process_model;
+  inekf.debug_force_vel_jacobian = options.inekf.debug_force_vel_jacobian;
+  inekf.debug_disable_true_reset_gamma =
+      options.inekf.debug_disable_true_reset_gamma;
+  inekf.debug_enable_standard_reset_gamma =
+      options.inekf.debug_enable_standard_reset_gamma;
+  inekf.p_init_ecef = records.front().state.p;
+  InEkfManager *inekf_ptr = inekf.enabled ? &inekf : nullptr;
+  const MeasurementModelContext measurement_context =
+      BuildMeasurementModelContextFromInEkfConfig(inekf_ptr);
 
   Vector3d mounting_base_rpy = ComputeMountingBaseRpyRad(options);
 
@@ -1171,14 +1164,17 @@ AuditSummary RunAuditForConfig(const string &config_path,
     if (options.constraints.enable_nhc) {
       auto nhc_builder = [&](const State &state) -> AuditModel {
         Matrix3d C_b_v = BuildVehicleRotation(mounting_base_rpy, state);
-        auto model = MeasModels::ComputeNhcModel(state, C_b_v, omega_ib_b_raw,
-                                                 options.constraints.sigma_nhc_y,
-                                                 options.constraints.sigma_nhc_z,
-                                                 fej_ptr);
-        return {model.y, model.H};
+        NhcMeasurementInput input;
+        input.state = state;
+        input.C_b_v = C_b_v;
+        input.omega_ib_b_raw = omega_ib_b_raw;
+        input.sigma_nhc_y = options.constraints.sigma_nhc_y;
+        input.sigma_nhc_z = options.constraints.sigma_nhc_z;
+        input.context = measurement_context;
+        return ToAuditModel(BuildNhcMeasurement(input));
       };
       AuditModel nhc_analytic = EvaluateModel(record.state, nhc_builder);
-      MatrixXd nhc_numeric = ComputeNumericalJacobian(record.state, fej_ptr, eps, nhc_builder);
+      MatrixXd nhc_numeric = ComputeNumericalJacobian(record.state, inekf_ptr, eps, nhc_builder);
       auto nhc_block_errors = ComputeBlockErrors(summary.dataset, "NHC", sample.t_state,
                                                  sample.speed_h,
                                                  sample.yaw_rate_rad_s * kRadToDeg,
@@ -1204,14 +1200,17 @@ AuditSummary RunAuditForConfig(const string &config_path,
       }
       auto odo_builder = [&](const State &state) -> AuditModel {
         Matrix3d C_b_v = BuildVehicleRotation(mounting_base_rpy, state);
-        auto model = MeasModels::ComputeOdoModel(state, odo_speed, C_b_v,
-                                                 omega_ib_b_raw,
-                                                 options.constraints.sigma_odo,
-                                                 fej_ptr);
-        return {model.y, model.H};
+        OdoMeasurementInput input;
+        input.state = state;
+        input.odo_speed = odo_speed;
+        input.C_b_v = C_b_v;
+        input.omega_ib_b_raw = omega_ib_b_raw;
+        input.sigma_odo = options.constraints.sigma_odo;
+        input.context = measurement_context;
+        return ToAuditModel(BuildOdoMeasurement(input));
       };
       AuditModel odo_analytic = EvaluateModel(record.state, odo_builder);
-      MatrixXd odo_numeric = ComputeNumericalJacobian(record.state, fej_ptr, eps, odo_builder);
+      MatrixXd odo_numeric = ComputeNumericalJacobian(record.state, inekf_ptr, eps, odo_builder);
       auto odo_block_errors = ComputeBlockErrors(summary.dataset, "ODO", sample.t_state,
                                                  sample.speed_h,
                                                  sample.yaw_rate_rad_s * kRadToDeg,
@@ -1246,13 +1245,16 @@ AuditSummary RunAuditForConfig(const string &config_path,
     }
 
     auto gnss_pos_builder = [&](const State &state) -> AuditModel {
-      auto model = MeasModels::ComputeGnssPositionModel(state, gnss_pos_ecef,
-                                                        gnss_pos_std, fej_ptr);
-      return {model.y, model.H};
+      GnssPositionMeasurementInput input;
+      input.state = state;
+      input.z_ecef = gnss_pos_ecef;
+      input.sigma_gnss = gnss_pos_std;
+      input.context = measurement_context;
+      return ToAuditModel(BuildGnssPositionMeasurement(input));
     };
 
     AuditModel gnss_pos_analytic = EvaluateModel(record.state, gnss_pos_builder);
-    MatrixXd gnss_pos_numeric = ComputeNumericalJacobian(record.state, fej_ptr, eps,
+    MatrixXd gnss_pos_numeric = ComputeNumericalJacobian(record.state, inekf_ptr, eps,
                                                          gnss_pos_builder);
     auto gnss_pos_block_errors = ComputeBlockErrors(summary.dataset, "GNSS_POS",
                                                     sample.t_state, sample.speed_h,
@@ -1299,15 +1301,17 @@ AuditSummary RunAuditForConfig(const string &config_path,
     }
 
     auto gnss_vel_builder = [&](const State &state) -> AuditModel {
-      auto model = MeasModels::ComputeGnssVelocityModel(state, gnss_vel_ecef,
-                                                        omega_ib_b_raw,
-                                                        gnss_vel_std,
-                                                        fej_ptr);
-      return {model.y, model.H};
+      GnssVelocityMeasurementInput input;
+      input.state = state;
+      input.z_gnss_vel_ecef = gnss_vel_ecef;
+      input.omega_ib_b_raw = omega_ib_b_raw;
+      input.sigma_gnss_vel = gnss_vel_std;
+      input.context = measurement_context;
+      return ToAuditModel(BuildGnssVelocityMeasurement(input));
     };
 
     AuditModel gnss_vel_analytic = EvaluateModel(record.state, gnss_vel_builder);
-    MatrixXd gnss_vel_numeric = ComputeNumericalJacobian(record.state, fej_ptr, eps, gnss_vel_builder);
+    MatrixXd gnss_vel_numeric = ComputeNumericalJacobian(record.state, inekf_ptr, eps, gnss_vel_builder);
     auto gnss_vel_block_errors = ComputeBlockErrors(summary.dataset, "GNSS_VEL", sample.t_state,
                                                     sample.speed_h,
                                                     sample.yaw_rate_rad_s * kRadToDeg,
@@ -1365,7 +1369,7 @@ AuditSummary RunAuditForConfig(const string &config_path,
     Matrix<double, kStateDim, kStateDim> P_after_reset =
         debug_capture.reset_consistency.P_after_reset;
     Matrix<double, kStateDim, kStateDim> Gamma =
-        BuildTrueInEkfResetGammaFromDx(dx_reset);
+        BuildInEkfResetGammaFromDx(dx_reset);
     Matrix<double, kStateDim, kStateDim> P_expected =
         Gamma * P_tilde * Gamma.transpose();
     P_expected = 0.5 * (P_expected + P_expected.transpose());
@@ -1420,8 +1424,8 @@ vector<string> ParseConfigPaths(int argc, char **argv) {
   }
   if (configs.empty()) {
     configs = {
-        "config_data2_gnss30_true_iekf.yaml",
-        "config_data4_gnss30_true_iekf.yaml",
+        "config_data2_gnss30_inekf.yaml",
+        "config_data4_gnss30_inekf_best.yaml",
     };
   }
   return configs;

@@ -782,22 +782,19 @@ ConstraintConfig ApplyConstraintsNode(const ConstraintConfig &base,
 }
 
 /**
- * 将 fej 节点合并到配置中。
+ * 将 InEKF 配置节点合并到配置中。
  */
-FejConfig ApplyFejNode(const FejConfig &base, const YAML::Node &node,
-                       const string &context) {
-  FejConfig out = base;
+InEkfOptions ApplyInEkfNode(const InEkfOptions &base, const YAML::Node &node,
+                            const string &context) {
+  InEkfOptions out = base;
   if (!node) {
     return out;
   }
   if (!node.IsMap()) {
-    ThrowConfigError("error: " + context + ".fej 必须为 map");
+    ThrowConfigError("error: " + context + ".inekf 必须为 map");
   }
   if (node["enable"]) {
     out.enable = node["enable"].as<bool>();
-  }
-  if (node["true_iekf_mode"]) {
-    out.true_iekf_mode = node["true_iekf_mode"].as<bool>();
   }
   if (node["apply_covariance_floor_after_reset"]) {
     out.apply_covariance_floor_after_reset =
@@ -826,14 +823,27 @@ FejConfig ApplyFejNode(const FejConfig &base, const YAML::Node &node,
     out.ri_inject_pos_inverse = node["ri_inject_pos_inverse"].as<bool>();
   }
   if (node["debug_force_process_model"]) {
-    out.debug_force_process_model = ParseEnumString(
-        node["debug_force_process_model"], context + ".fej.debug_force_process_model",
-        {"auto", "eskf", "true_iekf"});
+    const string value =
+        node["debug_force_process_model"].as<string>();
+    if (value == "inekf") {
+      out.debug_force_process_model = "inekf";
+    } else {
+      out.debug_force_process_model = ParseEnumString(
+          node["debug_force_process_model"],
+          context + ".inekf.debug_force_process_model",
+          {"auto", "eskf"});
+    }
   }
   if (node["debug_force_vel_jacobian"]) {
-    out.debug_force_vel_jacobian = ParseEnumString(
-        node["debug_force_vel_jacobian"], context + ".fej.debug_force_vel_jacobian",
-        {"auto", "eskf", "true_iekf", "hybrid_zero"});
+    const string value = node["debug_force_vel_jacobian"].as<string>();
+    if (value == "inekf") {
+      out.debug_force_vel_jacobian = "inekf";
+    } else {
+      out.debug_force_vel_jacobian = ParseEnumString(
+          node["debug_force_vel_jacobian"],
+          context + ".inekf.debug_force_vel_jacobian",
+          {"auto", "eskf"});
+    }
   }
   if (node["debug_disable_true_reset_gamma"]) {
     out.debug_disable_true_reset_gamma =
@@ -1431,17 +1441,17 @@ void ValidateConstraintsConfig(const ConstraintConfig &config,
   }
 }
 
-void ValidateFejConfig(const FejConfig &config, const string &context) {
+void ValidateInEkfConfig(const InEkfOptions &config, const string &context) {
   if (!std::isfinite(config.omega_threshold) ||
       !std::isfinite(config.accel_threshold)) {
     ThrowConfigError("error: " + context +
-                     ".fej.omega_threshold/accel_threshold 必须为有限数值");
+                     ".inekf.omega_threshold/accel_threshold 必须为有限数值");
   }
   if (config.ri_vel_gyro_noise_mode != -1 &&
       config.ri_vel_gyro_noise_mode != 0 &&
       config.ri_vel_gyro_noise_mode != 1) {
     ThrowConfigError("error: " + context +
-                     ".fej.ri_vel_gyro_noise_mode 仅支持 -1/0/1");
+                     ".inekf.ri_vel_gyro_noise_mode 仅支持 -1/0/1");
   }
 }
 
@@ -1881,7 +1891,7 @@ FusionOptions LoadFusionOptions(const string &path) {
                                  f["gating"], "fusion");
   opt.constraints = ApplyConstraintsNode(opt.constraints, f["constraints"],
                                          "fusion");
-  opt.fej = ApplyFejNode(opt.fej, f["fej"], "fusion");
+  opt.inekf = ApplyInEkfNode(opt.inekf, f["inekf"], "fusion");
   opt.ablation = ApplyAblationNode(opt.ablation, f["ablation"], "fusion");
   opt.post_gnss_ablation = ApplyPostGnssAblationNode(
       opt.post_gnss_ablation, f["post_gnss_ablation"], "fusion");
@@ -1894,7 +1904,7 @@ FusionOptions LoadFusionOptions(const string &path) {
   ValidateGnssSchedule(opt.gnss_schedule, "fusion");
   ValidateNoiseParams(opt.noise, "fusion");
   ValidateConstraintsConfig(opt.constraints, "fusion");
-  ValidateFejConfig(opt.fej, "fusion");
+  ValidateInEkfConfig(opt.inekf, "fusion");
   ValidateRuntimePhases(opt.runtime_phases, "fusion");
   ValidateInitConfig(opt.init, "fusion");
   if (!std::isfinite(opt.gnss_pos_position_gain_scale) ||

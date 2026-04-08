@@ -447,19 +447,39 @@ void TestBuildAnchorsContracts() {
 }
 
 void TestData2BaselineOfficialConfig() {
-  FusionOptions options = LoadFusionOptions("config_data2_baseline_eskf.yaml");
+  FusionOptions options =
+      LoadFusionOptions("config_data2_baseline_ins_gnss_outage_best.yaml");
   Expect(options.gnss_path == "dataset/data2/rtk.txt",
-         "config_data2_baseline_eskf.yaml should use corrected data2 RTK GNSS path");
+         "config_data2_baseline_ins_gnss_outage_best.yaml should use corrected data2 RTK GNSS path");
   Expect(!options.enable_gnss_velocity,
-         "config_data2_baseline_eskf.yaml should disable GNSS velocity updates");
-  Expect(!options.ablation.disable_mounting_roll,
-         "config_data2_baseline_eskf.yaml should keep mounting_roll estimation enabled");
-  Expect(!options.ablation.disable_gnss_lever_z,
-         "config_data2_baseline_eskf.yaml should keep gnss_lever_z estimation enabled");
-  Expect(!options.ablation.disable_mounting,
-         "config_data2_baseline_eskf.yaml should keep mounting pitch/yaw estimable");
-  Expect(!options.ablation.disable_gnss_lever_arm,
-         "config_data2_baseline_eskf.yaml should keep gnss_lever x/y estimable");
+         "config_data2_baseline_ins_gnss_outage_best.yaml should disable GNSS velocity updates");
+  Expect(!options.init.use_truth_pva,
+         "config_data2_baseline_ins_gnss_outage_best.yaml should use manual init semantics");
+  Expect(!options.constraints.enable_odo && !options.constraints.enable_nhc,
+         "config_data2_baseline_ins_gnss_outage_best.yaml should remain pure INS/GNSS");
+  Expect(options.ablation.disable_odo_scale &&
+             options.ablation.disable_mounting &&
+             options.ablation.disable_odo_lever_arm &&
+             options.ablation.disable_gnss_lever_arm,
+         "config_data2_baseline_ins_gnss_outage_best.yaml should freeze ODO/NHC extrinsics");
+  Expect(!options.ablation.disable_mounting_roll &&
+             !options.ablation.disable_gnss_lever_z,
+         "config_data2_baseline_ins_gnss_outage_best.yaml should keep rollout-compatible state flags");
+  Expect(NearlyEqual(options.init.gnss_lever_arm0.x(), 0.15) &&
+             NearlyEqual(options.init.gnss_lever_arm0.y(), -0.22) &&
+             NearlyEqual(options.init.gnss_lever_arm0.z(), -1.15),
+         "config_data2_baseline_ins_gnss_outage_best.yaml should truth-fix the GNSS lever arm");
+  Expect(NearlyEqual(options.noise.sigma_ba, 5.0e-4) &&
+             NearlyEqual(options.noise.sigma_bg, 4.84813681109536e-6) &&
+             NearlyEqual(options.noise.sigma_sa, 3.0e-4) &&
+             NearlyEqual(options.noise.sigma_sg, 3.0e-4),
+         "config_data2_baseline_ins_gnss_outage_best.yaml should preserve validated ba/bg/sa/sg noise");
+  Expect(options.runtime_phases.size() == 3,
+         "config_data2_baseline_ins_gnss_outage_best.yaml should keep the 3-phase outage schedule");
+  Expect(options.runtime_phases[0].name == "phase1_ins_gnss_freeze_odo_states" &&
+             options.runtime_phases[1].name == "phase2_ins_gnss_freeze_odo_states" &&
+             options.runtime_phases[2].name == "phase3_periodic_gnss_outage_freeze_gnss_lever",
+         "config_data2_baseline_ins_gnss_outage_best.yaml should preserve the canonical outage phase names");
 }
 
 void TestGnssVelocityAvailabilityIndependentFromEnableFlag() {
@@ -670,6 +690,93 @@ void TestParseStandardResetGammaFlag() {
   FusionOptions options = LoadFusionOptions(temp_path);
   Expect(options.inekf.debug_enable_standard_reset_gamma,
          "debug_enable_standard_reset_gamma should be parsed from fusion.inekf");
+  fs::remove(temp_path);
+}
+
+void TestRuntimePhaseEntryOverridesParsing() {
+  const string temp_path = "__regression_runtime_phase_entry_overrides__.yaml";
+  WriteTextFile(
+      temp_path,
+      "common:\n"
+      "  anchors:\n"
+      "    mode: fixed\n"
+      "    positions: []\n"
+      "  gating:\n"
+      "    uwb_residual_max: 1.0\n"
+      "    time_tolerance: 1.0e-6\n"
+      "fusion:\n"
+      "  imu_path: imu.txt\n"
+      "  odo_path: odo.txt\n"
+      "  pos_path: pos.txt\n"
+      "  output_path: out.txt\n"
+      "  noise:\n"
+      "    sigma_acc: 1.0\n"
+      "    sigma_gyro: 1.0\n"
+      "    sigma_ba: 1.0\n"
+      "    sigma_bg: 1.0\n"
+      "    sigma_sg: 1.0\n"
+      "    sigma_sa: 1.0\n"
+      "    sigma_odo_scale: 1.0\n"
+      "    sigma_mounting: 1.0\n"
+      "    sigma_lever_arm: 1.0\n"
+      "    sigma_gnss_lever_arm: 1.0\n"
+      "    sigma_gnss_pos: 1.0\n"
+      "    sigma_uwb: 1.0\n"
+      "  constraints:\n"
+      "    enable_nhc: false\n"
+      "    enable_odo: false\n"
+      "    enable_zupt: false\n"
+      "    sigma_odo: 1.0\n"
+      "    sigma_nhc_y: 1.0\n"
+      "    sigma_nhc_z: 1.0\n"
+      "    sigma_zupt: 1.0\n"
+      "  runtime_phases:\n"
+      "    - name: phase2\n"
+      "      start_time: 10.0\n"
+      "      end_time: 20.0\n"
+      "      phase_entry_init_overrides:\n"
+      "        odo_scale: 1.0\n"
+      "        mounting_pitch0: 2.5\n"
+      "        mounting_yaw0: -3.5\n"
+      "        lever_arm0: [0.1, 0.2, 0.3]\n"
+      "      phase_entry_std_overrides:\n"
+      "        std_odo_scale: 0.2\n"
+      "        std_mounting_pitch: 12.0\n"
+      "        std_mounting_yaw: 15.0\n"
+      "        std_lever_arm: [0.4, 0.5, 0.6]\n");
+
+  FusionOptions options = LoadFusionOptions(temp_path);
+  Expect(options.runtime_phases.size() == 1,
+         "runtime phase entry override parsing should keep one phase");
+  const RuntimePhaseConfig &phase = options.runtime_phases.front();
+  Expect(phase.phase_entry_init_overrides.has_odo_scale &&
+             NearlyEqual(phase.phase_entry_init_overrides.odo_scale, 1.0),
+         "phase_entry_init_overrides.odo_scale should parse");
+  Expect(
+      phase.phase_entry_init_overrides.has_mounting_pitch0 &&
+          NearlyEqual(phase.phase_entry_init_overrides.mounting_pitch0, 2.5),
+      "phase_entry_init_overrides.mounting_pitch0 should parse");
+  Expect(phase.phase_entry_init_overrides.has_mounting_yaw0 &&
+             NearlyEqual(phase.phase_entry_init_overrides.mounting_yaw0, -3.5),
+         "phase_entry_init_overrides.mounting_yaw0 should parse");
+  Expect(phase.phase_entry_init_overrides.has_lever_arm0 &&
+             NearlyEqual(phase.phase_entry_init_overrides.lever_arm0.x(), 0.1) &&
+             NearlyEqual(phase.phase_entry_init_overrides.lever_arm0.z(), 0.3),
+         "phase_entry_init_overrides.lever_arm0 should parse");
+  Expect(phase.phase_entry_std_overrides.has_std_odo_scale &&
+             NearlyEqual(phase.phase_entry_std_overrides.std_odo_scale, 0.2),
+         "phase_entry_std_overrides.std_odo_scale should parse");
+  Expect(
+      phase.phase_entry_std_overrides.has_std_mounting_pitch &&
+          NearlyEqual(phase.phase_entry_std_overrides.std_mounting_pitch, 12.0),
+      "phase_entry_std_overrides.std_mounting_pitch should parse");
+  Expect(
+      phase.phase_entry_std_overrides.has_std_mounting_yaw &&
+          NearlyEqual(phase.phase_entry_std_overrides.std_mounting_yaw, 15.0),
+      "phase_entry_std_overrides.std_mounting_yaw should parse");
+  Expect(phase.phase_entry_std_overrides.has_std_lever_arm &&
+             NearlyEqual(phase.phase_entry_std_overrides.std_lever_arm.y(), 0.5),
+         "phase_entry_std_overrides.std_lever_arm should parse");
   fs::remove(temp_path);
 }
 
@@ -1554,6 +1661,14 @@ void TestNavigationFilterEngineTrueInEkfResetMatchesEskfCompatibilityWrapper() {
          "NavigationFilterEngine InEKF reset covariance drifted from legacy wrapper");
   Expect((extracted_reset.P_after_all - legacy_reset.P_after_all).norm() <= 1.0e-12,
          "NavigationFilterEngine InEKF final covariance drifted from legacy wrapper");
+  Expect(extracted_reset.gamma_deviation_norm > 0.0,
+         "NavigationFilterEngine InEKF reset snapshot should report non-zero Gamma deviation for a non-zero correction");
+  Expect(legacy_reset.gamma_deviation_norm > 0.0,
+         "legacy InEKF reset snapshot should report non-zero Gamma deviation for a non-zero correction");
+  Expect(extracted_reset.dx_att_norm > 0.0,
+         "NavigationFilterEngine InEKF reset snapshot should report non-zero attitude correction norm");
+  Expect(legacy_reset.dx_att_norm > 0.0,
+         "legacy InEKF reset snapshot should report non-zero attitude correction norm");
 }
 
 void TestNavigationFilterEngineStandardResetMatchesEskfCompatibilityWrapper() {
@@ -2139,6 +2254,85 @@ void TestRunFusionRuntimeCreatesNhcAdmissionLogParentDir() {
   fs::remove_all(temp_dir);
 }
 
+void TestPhaseEntryStdOverridesUseTargetPhaseMask() {
+  EskfEngine engine(NoiseParams{});
+
+  State state;
+  state.odo_scale = 0.7;
+  state.mounting_pitch = 1.0 * kDegToRad;
+  state.mounting_yaw = -2.0 * kDegToRad;
+  state.lever_arm = Vector3d(0.2, -0.3, 0.4);
+
+  Matrix<double, kStateDim, kStateDim> P0 =
+      Matrix<double, kStateDim, kStateDim>::Identity();
+  engine.Initialize(state, P0);
+
+  StateAblationConfig phase1_ablation;
+  phase1_ablation.disable_odo_scale = true;
+  phase1_ablation.disable_mounting = true;
+  phase1_ablation.disable_odo_lever_arm = true;
+  StateMask phase1_mask;
+  phase1_mask.fill(true);
+  phase1_mask[StateIdx::kOdoScale] = false;
+  phase1_mask[StateIdx::kMountRoll] = false;
+  phase1_mask[StateIdx::kMountPitch] = false;
+  phase1_mask[StateIdx::kMountYaw] = false;
+  phase1_mask[StateIdx::kLever + 0] = false;
+  phase1_mask[StateIdx::kLever + 1] = false;
+  phase1_mask[StateIdx::kLever + 2] = false;
+  engine.SetStateMask(phase1_mask);
+
+  RuntimePhaseConfig phase2;
+  phase2.name = "phase2_activate_calibration";
+  phase2.phase_entry_init_overrides.has_odo_scale = true;
+  phase2.phase_entry_init_overrides.odo_scale = 1.0;
+  phase2.phase_entry_init_overrides.has_mounting_pitch0 = true;
+  phase2.phase_entry_init_overrides.mounting_pitch0 = 0.0;
+  phase2.phase_entry_init_overrides.has_mounting_yaw0 = true;
+  phase2.phase_entry_init_overrides.mounting_yaw0 = 0.0;
+  phase2.phase_entry_init_overrides.has_lever_arm0 = true;
+  phase2.phase_entry_init_overrides.lever_arm0 = Vector3d::Zero();
+  phase2.phase_entry_std_overrides.has_std_odo_scale = true;
+  phase2.phase_entry_std_overrides.std_odo_scale = 0.2;
+  phase2.phase_entry_std_overrides.has_std_mounting_pitch = true;
+  phase2.phase_entry_std_overrides.std_mounting_pitch = 10.0;
+  phase2.phase_entry_std_overrides.has_std_mounting_yaw = true;
+  phase2.phase_entry_std_overrides.std_mounting_yaw = 10.0;
+  phase2.phase_entry_std_overrides.has_std_lever_arm = true;
+  phase2.phase_entry_std_overrides.std_lever_arm = Vector3d(1.0, 1.0, 1.0);
+
+  StateMask phase2_mask;
+  phase2_mask.fill(true);
+  phase2_mask[StateIdx::kMountRoll] = false;
+  ConstraintConfig phase2_constraints;
+  phase2_constraints.enable_odo = true;
+
+  const bool applied = fusion_runtime::ApplyRuntimePhaseEntryOverrides(
+      engine, phase2, phase2_mask, phase2_constraints, 200.0);
+
+  Expect(applied, "phase-entry helper should apply staged overrides");
+  Expect(NearlyEqual(engine.state().odo_scale, 1.0),
+         "phase-entry helper should reset odo_scale state on phase entry");
+  Expect(NearlyEqual(engine.state().mounting_pitch, 0.0),
+         "phase-entry helper should reset mounting_pitch state on phase entry");
+  Expect(NearlyEqual(engine.state().mounting_yaw, 0.0),
+         "phase-entry helper should reset mounting_yaw state on phase entry");
+  Expect(engine.state().lever_arm.isZero(1.0e-12),
+         "phase-entry helper should reset lever_arm state on phase entry");
+  Expect(NearlyEqual(engine.cov()(StateIdx::kOdoScale, StateIdx::kOdoScale),
+                     0.04, 1.0e-12),
+         "phase-entry helper should preserve odo_scale P0 reset under the target phase mask");
+  Expect(NearlyEqual(engine.cov()(StateIdx::kMountPitch, StateIdx::kMountPitch),
+                     std::pow(10.0 * kDegToRad, 2), 1.0e-12),
+         "phase-entry helper should preserve mounting_pitch P0 reset under the target phase mask");
+  Expect(NearlyEqual(engine.cov()(StateIdx::kMountYaw, StateIdx::kMountYaw),
+                     std::pow(10.0 * kDegToRad, 2), 1.0e-12),
+         "phase-entry helper should preserve mounting_yaw P0 reset under the target phase mask");
+  Expect(NearlyEqual(engine.cov()(StateIdx::kLever + 1, StateIdx::kLever + 1),
+                     1.0, 1.0e-12),
+         "phase-entry helper should preserve lever-arm P0 reset under the target phase mask");
+}
+
 void TestSaveStateSeriesSmoke() {
   const string temp_path = "__regression_state_series_smoke.csv";
   FusionOptions options;
@@ -2265,6 +2459,8 @@ int main() {
     TestPredictKeepsNominalImuErrorStatesPiecewiseConstant();
     TestVectorNoiseParsingAndStateSeriesPath();
     TestParseStandardResetGammaFlag();
+    TestRuntimePhaseEntryOverridesParsing();
+    TestPhaseEntryStdOverridesUseTargetPhaseMask();
     TestLoadDatasetUsesSecondColumnAsTruthTimeForWeekSowFormat();
     TestProcessModelVectorPriorityBgZ();
     TestProcessModelBiasScaleCouplingMatchesNominalCorrection();

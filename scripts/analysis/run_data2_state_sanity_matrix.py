@@ -1225,7 +1225,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--base-config",
         type=Path,
-        default=Path("config_data2_baseline_eskf.yaml"),
+        default=Path("config_data2_baseline_ins_gnss_outage_best.yaml"),
         help="Baseline config relative to repo root.",
     )
     parser.add_argument(

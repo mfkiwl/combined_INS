@@ -605,7 +605,7 @@ def run_standard_plot(
     plot_stdout_path = args.artifacts_dir / "plot_generation.stdout.txt"
     plot_cmd = [
         sys.executable,
-        str((REPO_ROOT / "plot_navresult.py").resolve()),
+        str((REPO_ROOT / "scripts" / "analysis" / "plot_navresult.py").resolve()),
         str((REPO_ROOT / official_row["sol_path"]).resolve()),
         str(official_cfg_path.resolve()),
         "--mode",
@@ -629,7 +629,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Run a legacy-style data2 RTK ESKF GNSS outage evaluation. "
-            "The canonical baseline runner is scripts/analysis/run_data2_baseline_current.py."
+            "The canonical pure INS/GNSS baseline runner is "
+            "scripts/analysis/run_data2_baseline_ins_gnss_eskf_outage_60on100off_best.py."
         )
     )
     parser.add_argument(

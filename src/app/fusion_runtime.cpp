@@ -505,11 +505,31 @@ FusionRuntimeOutput RunFusionRuntime(
   bool debug_reset_bg_z_state_and_cov_applied = false;
   ConstraintUpdateStats nhc_stats;
   ConstraintUpdateStats odo_stats;
+  vector<bool> phase_entry_applied(options.runtime_phases.size(), false);
+  const auto apply_phase_entry_overrides =
+      [&](const RuntimePhaseConfig &phase, double t_now) {
+        const StateAblationConfig phase_ablation = MergeAblationConfig(
+            active_ablation, phase.ablation);
+        return ApplyRuntimePhaseEntryOverrides(
+            engine, phase, BuildStateMask(phase_ablation),
+            effective_constraints, t_now);
+      };
   const auto sync_runtime_controls = [&](double t_now) {
     effective_constraints = compute_effective_constraints(t_now);
     effective_ablation = compute_effective_ablation(t_now);
     const NoiseParams effective_noise =
         build_effective_noise(t_now, effective_ablation);
+    for (size_t phase_idx = 0; phase_idx < options.runtime_phases.size();
+         ++phase_idx) {
+      const auto &phase = options.runtime_phases[phase_idx];
+      if (phase_entry_applied[phase_idx] || !phase.enabled ||
+          !IsTimeInWindow(t_now, phase.start_time, phase.end_time,
+                          options.gating.time_tolerance)) {
+        continue;
+      }
+      apply_phase_entry_overrides(phase, t_now);
+      phase_entry_applied[phase_idx] = true;
+    }
     engine.SetNoiseParams(effective_noise);
     engine.SetStateMask(BuildStateMask(effective_ablation));
     engine.SetCovarianceFloor(build_covariance_floor(effective_constraints));
@@ -536,6 +556,7 @@ FusionRuntimeOutput RunFusionRuntime(
     }
   };
 
+  sync_runtime_controls(dataset.imu.front().t);
   engine.AddImu(dataset.imu[0]);
   for (size_t i = 1; i < dataset.imu.size(); ++i) {
     engine.AddImu(dataset.imu[i]);

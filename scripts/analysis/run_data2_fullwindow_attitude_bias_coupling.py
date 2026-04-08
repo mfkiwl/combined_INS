@@ -46,7 +46,7 @@ from scripts.analysis.run_nhc_state_convergence_research import (  # noqa: E402
 
 EXP_ID_DEFAULT = "EXP-20260325-data2-fullwindow-attitude-bias-coupling-r1"
 OUTPUT_DIR_DEFAULT = Path("output/data2_fullwindow_attitude_bias_coupling_r1_20260325")
-BASE_CONFIG_DEFAULT = Path("config_data2_research_seed_eskf.yaml")
+BASE_CONFIG_DEFAULT = Path("config_data2_baseline_ins_gnss_outage_best.yaml")
 SOLVER_DEFAULT = Path("build/Release/eskf_fusion.exe")
 EXTRINSIC_NOISE_SCALE = 0.01
 MEASUREMENT_NOISE_SCALE = 5.0

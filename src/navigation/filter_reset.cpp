@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 
 #include "utils/math_utils.h"
 
@@ -153,6 +154,13 @@ NavigationFilterEngine::BuildInEkfResetGamma(const VectorXd &dx) const {
 void NavigationFilterEngine::ApplyInEkfReset(const VectorXd &dx) {
   const Matrix<double, kStateDim, kStateDim> Gamma =
       BuildInEkfResetGamma(dx);
+  const double gamma_diff =
+      (Gamma - Matrix<double, kStateDim, kStateDim>::Identity()).norm();
+  const double dx_att_norm = dx.segment<3>(StateIdx::kAtt).norm();
+  last_inekf_correction_.gamma_deviation_norm = gamma_diff;
+  last_inekf_correction_.dx_att_norm = dx_att_norm;
+  cerr << "[DIAG] Gamma deviation from I: " << gamma_diff << "\n";
+  cerr << "[DIAG] dx_att norm: " << dx_att_norm << "\n";
   P_ = Gamma * P_ * Gamma.transpose();
   P_ = 0.5 * (P_ + P_.transpose());
   ApplyStateMaskToCov();

@@ -15,6 +15,8 @@
 using namespace std;
 using namespace Eigen;
 
+class EskfEngine;
+
 /**
  * 基站配置参数。
  * mode 表示布站方式（fixed/auto）；margin 是自动布站的外扩边距；
@@ -311,8 +313,63 @@ struct PostGnssAblationConfig {
 };
 
 /**
+ * 运行期阶段入口的一次性状态初值覆盖。
+ * 字段命名与 init.* 保持一致，但仅在进入该阶段时执行一次。
+ */
+struct RuntimePhaseEntryInitOverride {
+  bool has_ba0 = false;
+  Vector3d ba0{Vector3d::Zero()};
+  bool has_bg0 = false;
+  Vector3d bg0{Vector3d::Zero()};
+  bool has_sg0 = false;
+  Vector3d sg0{Vector3d::Zero()};
+  bool has_sa0 = false;
+  Vector3d sa0{Vector3d::Zero()};
+  bool has_odo_scale = false;
+  double odo_scale = 1.0;
+  bool has_mounting_roll0 = false;
+  double mounting_roll0 = 0.0;
+  bool has_mounting_pitch0 = false;
+  double mounting_pitch0 = 0.0;
+  bool has_mounting_yaw0 = false;
+  double mounting_yaw0 = 0.0;
+  bool has_lever_arm0 = false;
+  Vector3d lever_arm0{Vector3d::Zero()};
+  bool has_gnss_lever_arm0 = false;
+  Vector3d gnss_lever_arm0{Vector3d::Zero()};
+};
+
+/**
+ * 运行期阶段入口的一次性初始标准差覆盖。
+ * 仅重置对应状态块的 P 对角线，不改变其他状态块。
+ */
+struct RuntimePhaseEntryStdOverride {
+  bool has_std_ba = false;
+  Vector3d std_ba{Vector3d::Zero()};
+  bool has_std_bg = false;
+  Vector3d std_bg{Vector3d::Zero()};
+  bool has_std_sg = false;
+  Vector3d std_sg{Vector3d::Zero()};
+  bool has_std_sa = false;
+  Vector3d std_sa{Vector3d::Zero()};
+  bool has_std_odo_scale = false;
+  double std_odo_scale = 0.0;
+  bool has_std_mounting_roll = false;
+  double std_mounting_roll = 0.0;
+  bool has_std_mounting_pitch = false;
+  double std_mounting_pitch = 0.0;
+  bool has_std_mounting_yaw = false;
+  double std_mounting_yaw = 0.0;
+  bool has_std_lever_arm = false;
+  Vector3d std_lever_arm{Vector3d::Zero()};
+  bool has_std_gnss_lever_arm = false;
+  Vector3d std_gnss_lever_arm{Vector3d::Zero()};
+};
+
+/**
  * 运行期阶段控制。
  * 在指定时间窗内叠加状态冻结、约束开关与过程噪声覆盖。
+ * phase_entry_* 仅在进入阶段时执行一次。
  */
 struct RuntimePhaseConfig {
   bool enabled = true;
@@ -322,6 +379,8 @@ struct RuntimePhaseConfig {
   StateAblationConfig ablation;
   RuntimeConstraintOverride constraints;
   RuntimeNoiseOverride noise;
+  RuntimePhaseEntryInitOverride phase_entry_init_overrides;
+  RuntimePhaseEntryStdOverride phase_entry_std_overrides;
 };
 
 /**
@@ -630,6 +689,13 @@ struct FusionRuntimeOutput {
   FusionResult result;
   FusionRuntimeStats stats;
 };
+
+namespace fusion_runtime {
+bool ApplyRuntimePhaseEntryOverrides(
+    EskfEngine &engine, const RuntimePhaseConfig &phase,
+    const std::array<bool, kStateDim> &target_mask,
+    const ConstraintConfig &effective_constraints, double t_now);
+}
 
 struct GnssSplitCovarianceCapture {
   bool valid = false;

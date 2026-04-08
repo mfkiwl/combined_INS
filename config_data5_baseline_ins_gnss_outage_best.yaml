@@ -1,0 +1,318 @@
+common:
+  anchors:
+    mode: fixed
+    margin: 1.0
+    positions: []
+  gating:
+    uwb_residual_max: 100000000000.0
+    time_tolerance: 1.0e-06
+    max_dt: 0.2
+fusion:
+  imu_path: dataset/data5/Leador-A15.txt
+  odo_path: ''
+  pos_path: dataset/data5/truth.nav
+  gnss_path: dataset/data5/GNSS-RTK.txt
+  enable_gnss_velocity: false
+  uwb_path: ''
+  output_path: output/data5_baseline_ins_gnss_outage_best/SOL_data5_baseline_ins_gnss_outage_best.txt
+  starttime: 456300.0
+  finaltime: 459664.620611019
+  uwb_anchor_schedule:
+    enabled: false
+  fej:
+    enable: false
+    enable_layer2: true
+    imu_window_size: 100
+    omega_threshold: 0.05
+    accel_threshold: 0.5
+  ablation:
+    disable_mounting_roll: false
+    disable_gnss_lever_z: false
+    disable_mounting: true
+    disable_odo_lever_arm: true
+    disable_gnss_lever_arm: true
+    disable_odo_scale: true
+    disable_gyro_scale: false
+    disable_accel_scale: false
+  noise:
+    sigma_acc: 0.0005
+    sigma_gyro: 8.726646259971648e-07
+    sigma_ba: 0.00015000000000000001
+    sigma_bg: 1.308996938995747e-07
+    sigma_sg: 0.0003
+    sigma_sa: 0.0003
+    sigma_ba_vec:
+    - 0.00015000000000000001
+    - 0.00015000000000000001
+    - 0.00015000000000000001
+    sigma_bg_vec:
+    - 1.308996938995747e-07
+    - 1.308996938995747e-07
+    - 1.308996938995747e-07
+    sigma_sg_vec:
+    - 0.0003
+    - 0.0003
+    - 0.0003
+    sigma_sa_vec:
+    - 0.0003
+    - 0.0003
+    - 0.0003
+    sigma_odo_scale: 1.0e-05
+    sigma_mounting: 1.0e-06
+    sigma_mounting_roll: 1.0e-06
+    sigma_mounting_pitch: 1.0e-06
+    sigma_mounting_yaw: 1.0e-06
+    sigma_lever_arm: 1.0e-05
+    sigma_gnss_lever_arm: 0.0
+    sigma_gnss_lever_arm_vec:
+    - 0.0
+    - 0.0
+    - 0.0
+    sigma_gnss_pos: 1
+    sigma_uwb: 100.0
+    markov_corr_time: 14400.0
+  constraints:
+    enable_nhc: false
+    enable_odo: false
+    enable_zupt: false
+    sigma_odo: 3.0
+    odo_lever_arm:
+    - 0.0
+    - 0.0
+    - 0.0
+    imu_mounting_angle:
+    - 0.0
+    - 0.0
+    - 0.0
+    sigma_nhc_y: 3.0
+    sigma_nhc_z: 3.0
+    sigma_zupt: 0.05
+    zupt_min_duration: 0.5
+    zupt_max_speed: 0.2
+    zupt_max_gyro: 0.05
+    zupt_max_acc: 0.5
+    enable_diagnostics: true
+    nhc_max_abs_v: 5.0
+    enable_consistency_log: true
+    enable_covariance_floor: false
+    freeze_extrinsics_when_weak_excitation: false
+    odo_min_update_interval: 0.0
+    nhc_min_update_interval: 0.0
+    p_floor_pos_var: 0.01
+    p_floor_vel_var: 0.001
+    p_floor_att_deg: 0.01
+    p_floor_mounting_deg: 0.1
+    p_floor_bg_var: 1.0e-08
+    enable_mechanism_log: false
+  init:
+    use_truth_pva: false
+    init_pos_lla:
+    - 30.4447873701
+    - 114.4718632047
+    - 20.899
+    init_vel_ned:
+    - 0.0
+    - 0.0
+    - 0.0
+    init_att_rpy:
+    - 0.85421502
+    - -2.03480295
+    - 185.70235133
+    ba0:
+    - 0.0
+    - 0.0
+    - 0.0
+    bg0:
+    - 0.0
+    - 0.0
+    - 0.0
+    sg0:
+    - 0.0
+    - 0.0
+    - 0.0
+    sa0:
+    - 0.0
+    - 0.0
+    - 0.0
+    odo_scale: 1.0
+    mounting_roll0: 0.0
+    mounting_pitch0: 0.0
+    mounting_yaw0: 0.0
+    lever_arm0:
+    - 0.0
+    - 0.0
+    - 0.0
+    gnss_lever_arm0:
+    - 0.136
+    - -0.301
+    - -0.184
+    std_pos:
+    - 0.005
+    - 0.004
+    - 0.008
+    std_vel:
+    - 0.003
+    - 0.004
+    - 0.004
+    std_att:
+    - 0.003
+    - 0.003
+    - 0.023
+    std_ba:
+    - 0.00015000000000000001
+    - 0.00015000000000000001
+    - 0.00015000000000000001
+    std_bg:
+    - 1.308996938995747e-07
+    - 1.308996938995747e-07
+    - 1.308996938995747e-07
+    std_sg:
+    - 0.0003
+    - 0.0003
+    - 0.0003
+    std_sa:
+    - 0.0003
+    - 0.0003
+    - 0.0003
+    std_odo_scale: 0.005
+    std_mounting_roll: 3.0
+    std_mounting_pitch: 3.0
+    std_mounting_yaw: 3.0
+    std_lever_arm:
+    - 0.1
+    - 0.1
+    - 0.1
+    std_gnss_lever_arm:
+    - 0.0
+    - 0.0
+    - 0.0
+    P0_diag:
+    - 2.5e-05
+    - 1.6e-05
+    - 6.4e-05
+    - 9.0e-06
+    - 1.6e-05
+    - 1.6e-05
+    - 9.0e-06
+    - 9.0e-06
+    - 0.000529
+    - 2.2500000000000003e-08
+    - 2.2500000000000003e-08
+    - 2.2500000000000003e-08
+    - 1.7134729863002356e-14
+    - 1.7134729863002356e-14
+    - 1.7134729863002356e-14
+    - 8.999999999999999e-08
+    - 8.999999999999999e-08
+    - 8.999999999999999e-08
+    - 8.999999999999999e-08
+    - 8.999999999999999e-08
+    - 8.999999999999999e-08
+    - 2.5e-05
+    - 0.0027415567780803775
+    - 0.0027415567780803775
+    - 0.0027415567780803775
+    - 0.01
+    - 0.01
+    - 0.01
+    - 0.0
+    - 0.0
+    - 0.0
+    runtime_truth_anchor_pva: false
+    runtime_truth_anchor_position: false
+    runtime_truth_anchor_velocity: false
+    runtime_truth_anchor_attitude: false
+    runtime_truth_anchor_gnss_only: false
+    use_legacy_mounting_base_logic: false
+    lever_arm_source: init
+    strict_extrinsic_conflict: false
+  state_series_output_path: output/data5_baseline_ins_gnss_outage_best/state_series_data5_baseline_ins_gnss_outage_best.csv
+  gnss_schedule:
+    enabled: true
+    enabled_windows:
+    - start_time: 456300.0
+      end_time: 457060.0
+    - start_time: 457120.0
+      end_time: 457180.0
+    - start_time: 457240.0
+      end_time: 457300.0
+    - start_time: 457360.0
+      end_time: 457420.0
+    - start_time: 457480.0
+      end_time: 457540.0
+    - start_time: 457600.0
+      end_time: 457660.0
+    - start_time: 457720.0
+      end_time: 457780.0
+    - start_time: 457840.0
+      end_time: 457900.0
+    - start_time: 457960.0
+      end_time: 458020.0
+    - start_time: 458080.0
+      end_time: 458140.0
+    - start_time: 458200.0
+      end_time: 458260.0
+    - start_time: 458320.0
+      end_time: 458380.0
+    - start_time: 458440.0
+      end_time: 458500.0
+    - start_time: 458560.0
+      end_time: 458620.0
+    - start_time: 458680.0
+      end_time: 458740.0
+    - start_time: 458800.0
+      end_time: 458860.0
+    - start_time: 458920.0
+      end_time: 458980.0
+    - start_time: 459040.0
+      end_time: 459100.0
+    - start_time: 459160.0
+      end_time: 459220.0
+    - start_time: 459280.0
+      end_time: 459340.0
+    - start_time: 459400.0
+      end_time: 459460.0
+    - start_time: 459520.0
+      end_time: 459580.0
+    - start_time: 459640.0
+      end_time: 459664.620611019
+  runtime_phases:
+  - name: phase1_ins_gnss_freeze_odo_states
+    start_time: 456300.0
+    end_time: 456500.0
+    ablation:
+      disable_odo_scale: true
+      disable_mounting: true
+      disable_odo_lever_arm: true
+      disable_gnss_lever_arm: true
+    constraints:
+      enable_odo: false
+      enable_nhc: false
+  - name: phase2_ins_gnss_freeze_odo_states
+    start_time: 456500.0
+    end_time: 457000.0
+    ablation:
+      disable_odo_scale: true
+      disable_mounting: true
+      disable_odo_lever_arm: true
+      disable_gnss_lever_arm: true
+    constraints:
+      enable_odo: false
+      enable_nhc: false
+  - name: phase3_periodic_gnss_outage_freeze_gnss_lever
+    start_time: 457000.0
+    end_time: 459664.620611019
+    ablation:
+      disable_odo_scale: true
+      disable_mounting: true
+      disable_odo_lever_arm: true
+      disable_gnss_lever_arm: true
+    constraints:
+      enable_odo: false
+      enable_nhc: false
+generator:
+  pos_path: dataset/data5/truth.nav
+  output_path: UWB_simulated.txt
+  uwb_hz: 10.0
+  sigma: 0.1
+  seed: 42

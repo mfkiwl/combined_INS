@@ -42,7 +42,7 @@ from scripts.analysis.run_data2_state_sanity_matrix import (  # noqa: E402
 
 EXP_ID = "EXP-20260323-data2-nhc-state-convergence-research-r1"
 OUTPUT_DIR_DEFAULT = Path("output/data2_nhc_state_convergence_research_r1_20260323")
-BASE_CONFIG_DEFAULT = Path("config_data2_baseline_eskf.yaml")
+BASE_CONFIG_DEFAULT = Path("config_data2_baseline_ins_gnss_outage_best.yaml")
 SOLVER_DEFAULT = Path("build/Release/eskf_fusion.exe")
 JUMP_WINDOW_START = 528450.0
 JUMP_WINDOW_END = 528580.0

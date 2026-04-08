@@ -1130,6 +1130,130 @@ void ValidateRuntimeNoiseOverride(const RuntimeNoiseOverride &noise,
                               "noise.sigma_gnss_lever_arm_vec", context);
 }
 
+RuntimePhaseEntryInitOverride ApplyRuntimePhaseEntryInitOverrideNode(
+    const RuntimePhaseEntryInitOverride &base, const YAML::Node &node,
+    const string &context) {
+  RuntimePhaseEntryInitOverride out = base;
+  if (!node) {
+    return out;
+  }
+  if (!node.IsMap()) {
+    ThrowConfigError("error: " + context +
+                     ".phase_entry_init_overrides 必须为 map");
+  }
+  if (node["ba0"]) {
+    out.has_ba0 = true;
+    out.ba0 =
+        ParseVector3(node["ba0"], context + ".phase_entry_init_overrides.ba0");
+  }
+  if (node["bg0"]) {
+    out.has_bg0 = true;
+    out.bg0 =
+        ParseVector3(node["bg0"], context + ".phase_entry_init_overrides.bg0");
+  }
+  if (node["sg0"]) {
+    out.has_sg0 = true;
+    out.sg0 =
+        ParseVector3(node["sg0"], context + ".phase_entry_init_overrides.sg0");
+  }
+  if (node["sa0"]) {
+    out.has_sa0 = true;
+    out.sa0 =
+        ParseVector3(node["sa0"], context + ".phase_entry_init_overrides.sa0");
+  }
+  if (node["odo_scale"]) {
+    out.has_odo_scale = true;
+    out.odo_scale = node["odo_scale"].as<double>();
+  }
+  if (node["mounting_roll0"]) {
+    out.has_mounting_roll0 = true;
+    out.mounting_roll0 = node["mounting_roll0"].as<double>();
+  }
+  if (node["mounting_pitch0"]) {
+    out.has_mounting_pitch0 = true;
+    out.mounting_pitch0 = node["mounting_pitch0"].as<double>();
+  }
+  if (node["mounting_yaw0"]) {
+    out.has_mounting_yaw0 = true;
+    out.mounting_yaw0 = node["mounting_yaw0"].as<double>();
+  }
+  if (node["lever_arm0"]) {
+    out.has_lever_arm0 = true;
+    out.lever_arm0 = ParseVector3(node["lever_arm0"],
+                                  context +
+                                      ".phase_entry_init_overrides.lever_arm0");
+  }
+  if (node["gnss_lever_arm0"]) {
+    out.has_gnss_lever_arm0 = true;
+    out.gnss_lever_arm0 = ParseVector3(
+        node["gnss_lever_arm0"],
+        context + ".phase_entry_init_overrides.gnss_lever_arm0");
+  }
+  return out;
+}
+
+RuntimePhaseEntryStdOverride ApplyRuntimePhaseEntryStdOverrideNode(
+    const RuntimePhaseEntryStdOverride &base, const YAML::Node &node,
+    const string &context) {
+  RuntimePhaseEntryStdOverride out = base;
+  if (!node) {
+    return out;
+  }
+  if (!node.IsMap()) {
+    ThrowConfigError("error: " + context +
+                     ".phase_entry_std_overrides 必须为 map");
+  }
+  if (node["std_ba"]) {
+    out.has_std_ba = true;
+    out.std_ba = ParseVector3(node["std_ba"],
+                              context + ".phase_entry_std_overrides.std_ba");
+  }
+  if (node["std_bg"]) {
+    out.has_std_bg = true;
+    out.std_bg = ParseVector3(node["std_bg"],
+                              context + ".phase_entry_std_overrides.std_bg");
+  }
+  if (node["std_sg"]) {
+    out.has_std_sg = true;
+    out.std_sg = ParseVector3(node["std_sg"],
+                              context + ".phase_entry_std_overrides.std_sg");
+  }
+  if (node["std_sa"]) {
+    out.has_std_sa = true;
+    out.std_sa = ParseVector3(node["std_sa"],
+                              context + ".phase_entry_std_overrides.std_sa");
+  }
+  if (node["std_odo_scale"]) {
+    out.has_std_odo_scale = true;
+    out.std_odo_scale = node["std_odo_scale"].as<double>();
+  }
+  if (node["std_mounting_roll"]) {
+    out.has_std_mounting_roll = true;
+    out.std_mounting_roll = node["std_mounting_roll"].as<double>();
+  }
+  if (node["std_mounting_pitch"]) {
+    out.has_std_mounting_pitch = true;
+    out.std_mounting_pitch = node["std_mounting_pitch"].as<double>();
+  }
+  if (node["std_mounting_yaw"]) {
+    out.has_std_mounting_yaw = true;
+    out.std_mounting_yaw = node["std_mounting_yaw"].as<double>();
+  }
+  if (node["std_lever_arm"]) {
+    out.has_std_lever_arm = true;
+    out.std_lever_arm = ParseVector3(
+        node["std_lever_arm"],
+        context + ".phase_entry_std_overrides.std_lever_arm");
+  }
+  if (node["std_gnss_lever_arm"]) {
+    out.has_std_gnss_lever_arm = true;
+    out.std_gnss_lever_arm = ParseVector3(
+        node["std_gnss_lever_arm"],
+        context + ".phase_entry_std_overrides.std_gnss_lever_arm");
+  }
+  return out;
+}
+
 vector<RuntimePhaseConfig> ApplyRuntimePhasesNode(
     const vector<RuntimePhaseConfig> &base, const YAML::Node &node,
     const string &context) {
@@ -1171,6 +1295,14 @@ vector<RuntimePhaseConfig> ApplyRuntimePhasesNode(
     phase.noise = ApplyRuntimeNoiseOverrideNode(
         phase.noise, phase_node["noise"],
         context + ".runtime_phases[" + to_string(i) + "]");
+    phase.phase_entry_init_overrides = ApplyRuntimePhaseEntryInitOverrideNode(
+        phase.phase_entry_init_overrides,
+        phase_node["phase_entry_init_overrides"],
+        context + ".runtime_phases[" + to_string(i) + "]");
+    phase.phase_entry_std_overrides = ApplyRuntimePhaseEntryStdOverrideNode(
+        phase.phase_entry_std_overrides,
+        phase_node["phase_entry_std_overrides"],
+        context + ".runtime_phases[" + to_string(i) + "]");
     if (phase.name.empty()) {
       phase.name = "phase_" + to_string(i);
     }
@@ -1181,6 +1313,14 @@ vector<RuntimePhaseConfig> ApplyRuntimePhasesNode(
 
 void ValidateRuntimePhases(const vector<RuntimePhaseConfig> &phases,
                            const string &context) {
+  const auto validate_phase_std_scalar = [&](double value,
+                                             const string &field,
+                                             const string &prefix) {
+    if (!std::isfinite(value) || value < 0.0) {
+      ThrowConfigError("error: " + prefix + "." + field +
+                       " 必须为非负有限数值");
+    }
+  };
   for (size_t i = 0; i < phases.size(); ++i) {
     const RuntimePhaseConfig &phase = phases[i];
     const string prefix = context + ".runtime_phases[" + to_string(i) + "]";
@@ -1219,6 +1359,54 @@ void ValidateRuntimePhases(const vector<RuntimePhaseConfig> &phases,
                        "stage_nonpos_then_pos / position_only");
     }
     ValidateRuntimeNoiseOverride(phase.noise, prefix);
+    const RuntimePhaseEntryStdOverride &std_override =
+        phase.phase_entry_std_overrides;
+    if (std_override.has_std_ba) {
+      ValidateOverrideVectorNoise(std_override.std_ba,
+                                  "phase_entry_std_overrides.std_ba", prefix);
+    }
+    if (std_override.has_std_bg) {
+      ValidateOverrideVectorNoise(std_override.std_bg,
+                                  "phase_entry_std_overrides.std_bg", prefix);
+    }
+    if (std_override.has_std_sg) {
+      ValidateOverrideVectorNoise(std_override.std_sg,
+                                  "phase_entry_std_overrides.std_sg", prefix);
+    }
+    if (std_override.has_std_sa) {
+      ValidateOverrideVectorNoise(std_override.std_sa,
+                                  "phase_entry_std_overrides.std_sa", prefix);
+    }
+    if (std_override.has_std_lever_arm) {
+      ValidateOverrideVectorNoise(
+          std_override.std_lever_arm,
+          "phase_entry_std_overrides.std_lever_arm", prefix);
+    }
+    if (std_override.has_std_gnss_lever_arm) {
+      ValidateOverrideVectorNoise(
+          std_override.std_gnss_lever_arm,
+          "phase_entry_std_overrides.std_gnss_lever_arm", prefix);
+    }
+    if (std_override.has_std_odo_scale) {
+      validate_phase_std_scalar(std_override.std_odo_scale,
+                                "phase_entry_std_overrides.std_odo_scale",
+                                prefix);
+    }
+    if (std_override.has_std_mounting_roll) {
+      validate_phase_std_scalar(
+          std_override.std_mounting_roll,
+          "phase_entry_std_overrides.std_mounting_roll", prefix);
+    }
+    if (std_override.has_std_mounting_pitch) {
+      validate_phase_std_scalar(
+          std_override.std_mounting_pitch,
+          "phase_entry_std_overrides.std_mounting_pitch", prefix);
+    }
+    if (std_override.has_std_mounting_yaw) {
+      validate_phase_std_scalar(
+          std_override.std_mounting_yaw,
+          "phase_entry_std_overrides.std_mounting_yaw", prefix);
+    }
   }
 }
 

@@ -46,6 +46,8 @@ struct InEkfCorrectionSnapshot {
       Matrix<double, kStateDim, kStateDim>::Zero();
   Matrix<double, kStateDim, 1> dx =
       Matrix<double, kStateDim, 1>::Zero();
+  double gamma_deviation_norm = 0.0;
+  double dx_att_norm = 0.0;
   bool covariance_floor_applied = false;
 };
 

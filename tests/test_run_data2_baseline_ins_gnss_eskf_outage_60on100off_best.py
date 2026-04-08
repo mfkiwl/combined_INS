@@ -28,12 +28,12 @@ def load_module():
 
 def test_defaults_match_pure_ins_gnss_60on100off_best_replay_contract():
     module = load_module()
-    base_cfg = load_yaml(REPO_ROOT / "config_data2_baseline_ins_gnss_eskf_outage_60on100off_best.yaml")
+    base_cfg = load_yaml(REPO_ROOT / "config_data2_baseline_ins_gnss_outage_best.yaml")
     output_dir = Path("output/_tmp_data2_baseline_ins_gnss_eskf_outage_60on100off_best_contract")
 
     assert module.EXP_ID_DEFAULT == "EXP-20260407-data2-baseline-ins-gnss-eskf-outage-60on100off-best-r2"
     assert module.OUTPUT_DIR_DEFAULT == Path("output/data2_baseline_ins_gnss_eskf_outage_60on100off_best_r2")
-    assert module.BASE_CONFIG_DEFAULT == Path("config_data2_baseline_ins_gnss_eskf_outage_60on100off_best.yaml")
+    assert module.BASE_CONFIG_DEFAULT == Path("config_data2_baseline_ins_gnss_outage_best.yaml")
     assert module.BASELINE_CASE_ID == "data2_baseline_ins_gnss_eskf_outage_60on100off_best"
 
     cfg, metadata = module.build_run_config(base_cfg, output_dir)

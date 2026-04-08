@@ -47,6 +47,120 @@ bool fusion_runtime::ApplyRuntimeTruthAnchor(EskfEngine &engine,
   return true;
 }
 
+bool fusion_runtime::ApplyRuntimePhaseEntryOverrides(
+    EskfEngine &engine, const RuntimePhaseConfig &phase,
+    const std::array<bool, kStateDim> &target_mask,
+    const ConstraintConfig &effective_constraints, double t_now) {
+  State overridden_state = engine.state();
+  Matrix<double, kStateDim, kStateDim> overridden_cov = engine.cov();
+  bool touched = false;
+  const auto reset_cov_scalar = [&](int idx, double variance) {
+    overridden_cov.row(idx).setZero();
+    overridden_cov.col(idx).setZero();
+    overridden_cov(idx, idx) = variance;
+    touched = true;
+  };
+  const auto reset_cov_vec3 = [&](int start_idx, const Vector3d &variance) {
+    for (int axis = 0; axis < 3; ++axis) {
+      reset_cov_scalar(start_idx + axis, variance(axis));
+    }
+  };
+
+  const RuntimePhaseEntryInitOverride &init_override =
+      phase.phase_entry_init_overrides;
+  if (init_override.has_ba0) {
+    overridden_state.ba = init_override.ba0;
+    touched = true;
+  }
+  if (init_override.has_bg0) {
+    overridden_state.bg = init_override.bg0;
+    touched = true;
+  }
+  if (init_override.has_sg0) {
+    overridden_state.sg = init_override.sg0;
+    touched = true;
+  }
+  if (init_override.has_sa0) {
+    overridden_state.sa = init_override.sa0;
+    touched = true;
+  }
+  if (init_override.has_odo_scale) {
+    overridden_state.odo_scale = init_override.odo_scale;
+    if (effective_constraints.enable_odo && overridden_state.odo_scale <= 0.0) {
+      overridden_state.odo_scale = 1.0;
+    }
+    touched = true;
+  }
+  if (init_override.has_mounting_roll0) {
+    overridden_state.mounting_roll = init_override.mounting_roll0 * kDegToRad;
+    touched = true;
+  }
+  if (init_override.has_mounting_pitch0) {
+    overridden_state.mounting_pitch = init_override.mounting_pitch0 * kDegToRad;
+    touched = true;
+  }
+  if (init_override.has_mounting_yaw0) {
+    overridden_state.mounting_yaw = init_override.mounting_yaw0 * kDegToRad;
+    touched = true;
+  }
+  if (init_override.has_lever_arm0) {
+    overridden_state.lever_arm = init_override.lever_arm0;
+    touched = true;
+  }
+  if (init_override.has_gnss_lever_arm0) {
+    overridden_state.gnss_lever_arm = init_override.gnss_lever_arm0;
+    touched = true;
+  }
+
+  const RuntimePhaseEntryStdOverride &std_override =
+      phase.phase_entry_std_overrides;
+  if (std_override.has_std_ba) {
+    reset_cov_vec3(StateIdx::kBa, std_override.std_ba.array().square().matrix());
+  }
+  if (std_override.has_std_bg) {
+    reset_cov_vec3(StateIdx::kBg, std_override.std_bg.array().square().matrix());
+  }
+  if (std_override.has_std_sg) {
+    reset_cov_vec3(StateIdx::kSg, std_override.std_sg.array().square().matrix());
+  }
+  if (std_override.has_std_sa) {
+    reset_cov_vec3(StateIdx::kSa, std_override.std_sa.array().square().matrix());
+  }
+  if (std_override.has_std_odo_scale) {
+    reset_cov_scalar(StateIdx::kOdoScale,
+                     std_override.std_odo_scale * std_override.std_odo_scale);
+  }
+  if (std_override.has_std_mounting_roll) {
+    const double var = std::pow(std_override.std_mounting_roll * kDegToRad, 2);
+    reset_cov_scalar(StateIdx::kMountRoll, var);
+  }
+  if (std_override.has_std_mounting_pitch) {
+    const double var = std::pow(std_override.std_mounting_pitch * kDegToRad, 2);
+    reset_cov_scalar(StateIdx::kMountPitch, var);
+  }
+  if (std_override.has_std_mounting_yaw) {
+    const double var = std::pow(std_override.std_mounting_yaw * kDegToRad, 2);
+    reset_cov_scalar(StateIdx::kMountYaw, var);
+  }
+  if (std_override.has_std_lever_arm) {
+    reset_cov_vec3(StateIdx::kLever,
+                   std_override.std_lever_arm.array().square().matrix());
+  }
+  if (std_override.has_std_gnss_lever_arm) {
+    reset_cov_vec3(StateIdx::kGnssLever,
+                   std_override.std_gnss_lever_arm.array().square().matrix());
+  }
+
+  if (!touched) {
+    return false;
+  }
+  engine.SetStateMask(target_mask);
+  engine.OverrideStateAndCov(overridden_state, overridden_cov);
+  cout << "[Runtime] phase-entry override t=" << fixed << setprecision(3)
+       << t_now << " phase=" << phase.name << "\n";
+  return true;
+}
+
 bool fusion_runtime::ApplyDebugSeedBeforeFirstNhc(EskfEngine &engine,
                                                   const ConstraintConfig &cfg,
                                                   bool &already_applied) {

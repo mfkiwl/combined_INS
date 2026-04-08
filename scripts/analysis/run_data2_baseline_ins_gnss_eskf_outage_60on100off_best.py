@@ -53,7 +53,7 @@ from scripts.analysis.run_nhc_state_convergence_research import (
 
 EXP_ID_DEFAULT = "EXP-20260407-data2-baseline-ins-gnss-eskf-outage-60on100off-best-r2"
 OUTPUT_DIR_DEFAULT = Path("output/data2_baseline_ins_gnss_eskf_outage_60on100off_best_r2")
-BASE_CONFIG_DEFAULT = Path("config_data2_baseline_ins_gnss_eskf_outage_60on100off_best.yaml")
+BASE_CONFIG_DEFAULT = Path("config_data2_baseline_ins_gnss_outage_best.yaml")
 SOLVER_DEFAULT = Path("build/Release/eskf_fusion.exe")
 BASELINE_CASE_ID = "data2_baseline_ins_gnss_eskf_outage_60on100off_best"
 PHASE_NAME_MAP = {

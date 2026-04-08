@@ -58,7 +58,7 @@ from scripts.analysis.run_nhc_state_convergence_research import (  # noqa: E402
 
 EXP_ID_DEFAULT = "EXP-20260325-data2-staged-g5-no-imu-scale-r2"
 OUTPUT_DIR_DEFAULT = Path("output/data2_staged_g5_no_imu_scale_r2_20260325")
-BASE_CONFIG_DEFAULT = Path("config_data2_research_seed_eskf.yaml")
+BASE_CONFIG_DEFAULT = Path("config_data2_baseline_ins_gnss_outage_best.yaml")
 SOLVER_DEFAULT = Path("build/Release/eskf_fusion.exe")
 PHASE1_END_OFFSET_DEFAULT = 200.0
 PHASE2_END_OFFSET_DEFAULT = 700.0
